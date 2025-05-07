@@ -1,0 +1,52 @@
+<!--
+ * @Author: 
+ * @Date: 2023-11-07 10:07:42
+ * @LastEditTime: 2023-11-22 22:34:23
+ * @LastEditors: ssy
+ * @Description: 
+-->
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dataloadtest</title>
+</head>
+
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+    <script src="../public/js/cornerstone.min.js"></script>
+    <script src="../public/js/dicomParser.min.js"></script>
+
+    <script src="../public/js/cornerstoneWADOImageLoader.js"></script>
+    <script src="../public/js/cornerstoneFileImageLoader.min.js"></script>
+    <script>
+        let webWorkerUrl = '../public/js/cornerstoneWADOImageLoaderWebWorker.min.js'
+        let codecsUrl = '../public/js/cornerstoneWADOImageLoaderCodecs.js'
+        try {
+            window.cornerstoneWADOImageLoader.webWorkerManager.initialize({
+                maxWebWorkers: 4,
+                startWebWorkersOnDemand: true,
+                webWorkerPath: webWorkerUrl,
+                webWorkerTaskPaths: [],
+                taskConfiguration: {
+                    decodeTask: {
+                        loadCodecsOnStartup: true,
+                        initializeCodecsOnStartup: false,
+                        codecsPath: codecsUrl,
+                        usePDFJS: false,
+                        strict: false
+                    }
+                }
+            });
+        } catch (error) {
+            throw new Error('cornerstoneWADOImageLoader is not loaded');
+        }
+
+    </script>
+    <script src="../../../public/js/daikon.min.js"></script>
+    <script src="./dataload.js"></script>
+</body>
+
+</html>

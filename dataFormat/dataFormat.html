@@ -1,0 +1,68 @@
+<!--
+ * @Author: 
+ * @Date: 2023-11-07 10:07:42
+ * @LastEditTime: 2023-11-22 22:21:40
+ * @LastEditors: ssy
+ * @Description: 
+-->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>dataFormat</title>
+    <style>
+        .F1 {
+            position: absolute;
+            border: 1px solid blue;
+            background-color: rgba(0, 0, 0, 0.3);
+            height: 1600px;
+            width: 1200px;
+        }
+
+        .A1 {
+            position: absolute;
+            background-color: rgba(1, 0, 0, 1);
+        }
+
+        .A2 {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 1);
+        }
+
+        .A3 {
+            position: absolute;
+            width: 150px;
+            height: 300px;
+            top: 20px;
+            left: 550px;
+            background-color: rgba(205, 205, 205, 1);
+        }
+
+        .stack {
+            position: absolute;
+            top: 0px;
+
+            left: 0px
+        }
+    </style>
+</head>
+
+<body>
+    <div class="F1" style="top:60px ;left:30px">
+        <div class="A1" id="render">
+            <canvas id="mainRender" class="stack"></canvas>
+        </div>
+
+        <div class="A2" id="image">
+            <canvas id="imageRender" class="stack"></canvas>
+        </div>
+
+        <!-- <textarea class="A3" id="info"></textarea> -->
+    </div>
+    <script type="module" src="./dataFormat.js">
+    </script>
+
+</body>
+
+</html>

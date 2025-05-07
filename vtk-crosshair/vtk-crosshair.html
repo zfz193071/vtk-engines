@@ -1,0 +1,230 @@
+<!--
+ * @Author: 
+ * @Date: 2023-11-22 10:43:02
+ * @LastEditTime: 2023-12-28 14:25:23
+ * @LastEditors: ssy
+ * @Description: 
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      .viewport {
+        flex: 1;
+        height: 100%;
+        border: 1px solid paleturquoise;
+        position: relative;
+        .viewport_canvas{
+          position: absolute;
+          top: 0;
+          bottom: 0;
+        }
+        .viewport_div{
+            position: absolute;
+            display: block;
+            top: 0;
+            bottom: 0;
+        }
+      }
+      .content {
+        width: 100%;
+        height: 720px;
+        display: flex;
+        margin-bottom: 5px;
+      }
+      .content2 {
+        display: flex;
+        width: 100%;
+        height: 300px;
+        .content3 {
+          flex: 1;
+          /* width: 300px; */
+          border: 1px solid paleturquoise;
+          .opt-area {
+            margin-left: 5px;
+            flex: 1;
+            border: 1px solid black;
+            font: 14px "Fira Sans", sans-serif;
+            .opt-select-group {
+              display: flex;
+              flex-direction: row;
+              justify-content: center;
+              align-items: center;
+              .opt-select-element {
+                flex: 1;
+                text-align: left;
+                input {
+                  margin: 20px;
+                }
+              }
+            }
+            .para-set-group{
+                display: flex;
+                flex-wrap: wrap;
+                .para-set-element{
+                    flex: 0 0 33.333%;
+                    text-align: left;
+                    input{
+                        margin: 10px;
+                    }
+                }
+            }
+          }
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="content">
+      <div class="viewport" id="transverse-xy">
+        <canvas class="viewport_canvas"></canvas>
+        <div class="viewport_div"></div>
+      </div>
+      <div class="viewport" id="coronal-xz">
+        <canvas class="viewport_canvas"></canvas>
+        <div class="viewport_div"></div>
+      </div>
+      <div class="viewport" id="sagittal-yz">
+        <canvas class="viewport_canvas"></canvas>
+        <div class="viewport_div"></div>
+      </div>
+    </div>
+    <div class="content2">
+      <div id="render_3d" class="content3"></div>
+      <div class="content3">
+        <fieldset class="opt-area">
+          <legend>Choose Opt :</legend>
+          <div class="opt-select-group">
+            <div class="opt-select-element">
+              <input
+                type="checkbox"
+                id="ZOOM"
+                name="ZOOM"
+                class="optSelector"
+              />
+              <label for="ZOOM">ZOOM</label>
+            </div>
+            <div class="opt-select-element">
+              <input
+                type="checkbox"
+                id="ROTATE"
+                name="ROTATE"
+                class="optSelector"
+              />
+              <label for="ROTATE">ROTATE</label>
+            </div>
+            <div class="opt-select-element">
+              <input
+                type="checkbox"
+                id="WWWL"
+                name="WWWL"
+                class="optSelector"
+              />
+              <label for="WWWL">WWWL</label>
+            </div>
+            <div class="opt-select-element">
+              <input
+                type="checkbox"
+                id="ACROSS"
+                name="ACROSS"
+                class="optSelector"
+              />
+              <label for="ACROSS">ACROSS</label>
+            </div>
+            <div class="opt-select-element">
+              <input
+                type="checkbox"
+                id="ORTHO_MODE"
+                name="ORTHO_MODE"
+              />
+              <label for="ORTHO_MODE">Orthogonal</label>
+            </div>
+            
+          </div>
+        </fieldset>
+        <fieldset class="opt-area">
+          <legend>Para Set :</legend>
+          <div class="para-set-group">
+          </div>
+        </fieldset>
+      </div>
+    </div>
+  </body>
+  <script>
+    const INPUTSETDIC = ["scale","ww","wl","pageT","pageC","pageS","rotateT","rotateC","rotateS","thickT","thickC","thickS"]
+    const GPARA = {
+        scale: 1,
+        ww: 2178,
+        wl: 1089,
+        pageT: 10,
+        pageC: 256,
+        pageS: 256,
+        rotateT: 0,
+        rotateC: 0,
+        rotateS: 0,
+        thickS: 1,
+        thickC: 1,
+        thickT: 1
+    }
+    //增加全局变量监听
+    // 使用Object.defineProperty定义属性的setter和getter
+    for(let i = 0;i<INPUTSETDIC.length;i++){
+        let div = document.createElement("div")
+        div.className = "para-set-element"
+        let input = document.createElement("input")
+        input.type = "number"
+        input.id = INPUTSETDIC[i]
+        input.name = INPUTSETDIC[i]
+        input.className = "paraSetor"
+        input.value = GPARA[INPUTSETDIC[i]]
+        let label = document.createElement("label")
+        label.for = INPUTSETDIC[i]
+        label.innerText = INPUTSETDIC[i]+": "
+        label.style.display = "inline-block"
+        label.style.width = "50px"
+        div.appendChild(label)
+        div.appendChild(input)
+        document.querySelector(".para-set-group").appendChild(div)
+    }
+    document.getElementById("scale").step = 0.1
+    document.getElementById("ww").step = 100
+    document.getElementById("wl").step = 10
+    document.getElementById("rotateT").step = 10
+    document.getElementById("rotateC").step = 10
+    document.getElementById("rotateS").step = 10
+
+    function changeParaSet(){
+        let inputs = document.querySelectorAll(".paraSetor")
+        for(let i = 0;i<inputs.length;i++){
+            GPARA[inputs[i].id] = inputs[i].value
+        }
+        GPARA.value = {...GPARA}
+    }
+    //监听值变化
+    document.querySelector(".para-set-group").addEventListener("change",changeParaSet)
+
+    
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/gl-matrix.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+  <script src="https://unpkg.com/vtk.js@26.9.15/vtk.js"></script>
+  <script src="../public/js/dicomParser.min.js"></script>
+
+
+  <script>
+    //测试函数
+    // const { mat4 } = glMatrix
+    // let axes = mat4.identity(new Float64Array(16));
+    // let origin = [0, 0, 0,1];
+    // let translate  = [100, -100, 10];
+    // mat4.translate(axes, axes, translate);
+    // //求变换后的坐标点
+    // let result = [0, 0, 0, 0];
+    // mat4.multiply(result, axes, origin);
+    // console.log(result);
+  </script>
+  <script type="module" src="./vtk-crosshair.js"></script>
+
+</html>

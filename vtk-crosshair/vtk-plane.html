@@ -1,0 +1,56 @@
+<!--
+ * @Author: 
+ * @Date: 2023-11-27 17:18:42
+ * @LastEditTime: 2023-11-28 18:35:55
+ * @LastEditors: ssy
+ * @Description: 
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        #render_3d{
+            width: 300px;
+            height: 300px;
+        }
+        #viewport{
+            width: 500px;
+            height: 500px;
+            border: 1px solid paleturquoise;
+        }
+        .opt{
+            display: flex;
+            flex-direction: column;
+            justify-content: left;
+            align-items: left;
+        }
+        input{
+            flex: 1;
+            width: 500px;
+        }
+    </style>
+</head>
+<body>
+    <div id="render_3d">
+
+    </div>
+    <div id="viewport">
+
+    </div>
+    <div class="opt">
+        <input id= "setPage1" type="range" max="1000" min="-1000" step="10" value="0">
+        <input id= "setPage2" type="range" max="1000" min="-1000" step="10" value="0">
+        <input id= "setPage" type="range" max="200" min="0" step="1" value="0">
+    </div>
+</body>
+<script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/gl-matrix.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+<script src="https://unpkg.com/vtk.js@26.9.15/vtk.js"></script>
+<script src="../public/js/dicomParser.min.js"></script>
+<script>
+    
+</script>
+<script type="module" src="./vtk-plane.js"></script>
+</html>

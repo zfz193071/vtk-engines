@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>svgmark</title>
+    <style>
+        .F1 {
+            position: absolute;
+            border: 1px solid blue;
+            background-color: rgba(0, 0, 0, 0.3);
+            height: 1600px;
+            width: 1200px;
+        }
+
+        .A1 {
+            position: absolute;
+            width: 400px;
+            height: 300px;
+            top: 20px;
+            left: 20px;
+            background-color: rgba(1, 0, 0, 1);
+        }
+
+        .A2 {
+            position: absolute;
+            width: 512px;
+            height: 512px;
+            top: 350px;
+            background-color: rgba(0, 0, 0, 1);
+        }
+
+        .A3 {
+            position: absolute;
+            width: 150px;
+            height: 300px;
+            top: 20px;
+            left: 550px;
+            background-color: rgba(205, 205, 205, 1);
+        }
+
+        .stack {
+            position: absolute;
+            top: 0px;
+
+            left: 0px
+        }
+    </style>
+</head>
+
+<body>
+    <div class="F1" style="top:60px ;left:30px">
+        <div class="A1" id="render">
+            <canvas id="mainRender" class="stack"></canvas>
+        </div>
+
+        <div class="A2" id="image">
+            <canvas id="imageRender" class="stack"></canvas>
+            <style id="svgForMark" class="stack"> </style>
+        </div>
+
+        <textarea class="A3" id="info"></textarea>
+    </div>
+    <script type="module" src="./svgmark.js">
+    </script>
+
+</body>
+
+</html>
