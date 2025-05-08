@@ -182,9 +182,13 @@ class RenderEngine {
         let displayCoords = this.#vtkRenderer.worldToNormalizedDisplay(newCenter[0], newCenter[1], newCenter[2], 1)
         this.#crossOn3DScreen = { x: displayCoords[0] * this.#renderCanvas.width, y: (1 - displayCoords[1]) * this.#renderCanvas.height, z: displayCoords[2], r: rotateAngelGlobal[this.#curViewMod] }
     }
+    // 设置医学图像窗口宽度（WW, Window Width）和窗口中心（WL, Window Level）的函数，常用于控制CT/MRI 图像的对比度和亮度
+    // ww: 窗口宽度（Window Width）——影响图像的对比度
+    // wl: 窗口中心（Window Level）——影响图像的亮度
     setWWWL (ww, wl) {
         this.#colorPara_base.ww = ww
         this.#colorPara_base.wl = wl
+        // "B&W" 表示当前色表为黑白色（Black & White）
         if (this.#vtkSource) this.#vtkSource.setWWWL(ww, wl, "B&W")
     }
     setMapperActor (source) {
@@ -266,75 +270,119 @@ class RenderEngine {
         this.#clipPlane2.setNormal(clipPlaneNormal2);
         this.#clipPlane2.setOrigin(clipPlaneOrigin2);
     }
-    // 重构：按需求区分正交和非正交旋转行为
-    #crossMoveStart = false;
-    #crossThickStart = false;
-    #crossRotateStart = false;
-
+    #crossMoveStart = false
+    #crossThickStart = false
+    #crossRotateStart = false
     setCrossFromCatcher (pos, flag) {
         if (flag === "start") {
-            const center = this.#crossOn3DScreen;
-            const dx = pos.x - center.x;
-            const dy = pos.y - center.y;
-            const dist = Math.hypot(dx, dy);
-
-            // 启动时距离中心够远，才判断是拖动角度
-            if (dist > 5) {
-                this.#crossRotateStart = pos;
-                this.#crossMoveStart = null;
-            } else {
-                this.#crossMoveStart = pos;
-                this.#crossRotateStart = null;
+            if (this.#circleChoosed) {
+                this.#crossRotateStart = pos
+                this.#crossMoveStart = false
+                this.#crossThickStart = false
+            } else if (this.#rectChoosed) {
+                this.#crossThickStart = { axes: this.#rectChoosed.axes, imatrix: this.#rectChoosed.imatrix }
+                this.#crossMoveStart = false
+                this.#crossRotateStart = false
             }
-
-            this.#catcherEngine.getCatrcherDom().style.cursor = "none";
+            else {
+                this.#crossMoveStart = pos
+                this.#crossRotateStart = false
+                this.#crossThickStart = false
+            }
+            //设置鼠标样式为不可见
+            this.#catcherEngine.getCatrcherDom().style.cursor = "none"
         }
-
-        if (flag === "move") {
-            const center = this.#crossOn3DScreen;
-
-            if (this.#crossRotateStart) {
-                // 鼠标绕中心旋转，改变角度
-                const prev = this.#crossRotateStart;
-                const curr = pos;
-
-                const anglePrev = Math.atan2(prev.y - center.y, prev.x - center.x);
-                const angleCurr = Math.atan2(curr.y - center.y, curr.x - center.x);
-                let deltaAngle = angleCurr - anglePrev;
-
-                // 角度归一化到 [-PI, PI]
-                if (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-                if (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
-
-                // 更新主线角度
-                this.#crossOn3DScreen.r += deltaAngle;
-
-                if (this.isOrthogonalRotation) {
-                    // 正交模式：副线角度自动90度偏移
-                    this.#crossOn3DScreen.rY = this.#crossOn3DScreen.r + Math.PI / 2;  // 副线角度保持 90 度
-                }
-
-                this.#crossRotateStart = curr;
-
-                // 更新角度后重绘十字线
-                this.drawCrossOn3d(center);
-            }
-
-            if (this.#crossMoveStart) {
-                // 拖动中心点
-                this.#crossOn3DScreen.x = pos.x;
-                this.#crossOn3DScreen.y = pos.y;
-                this.drawCrossOn3d(this.#crossOn3DScreen);
-            }
-        }
-
         if (flag === "end") {
-            this.#crossRotateStart = null;
-            this.#crossMoveStart = null;
-            this.#catcherEngine.getCatrcherDom().style.cursor = "default";
+            this.#crossMoveStart = false
+            this.#crossThickStart = false
+            this.#crossRotateStart = false
+            this.drawCrossOn3d(pos)
+            //设置鼠标样式为默认
+            this.#catcherEngine.getCatrcherDom().style.cursor = "default"
+        }
+        if (flag === "move") {
+            if (this.#crossMoveStart) {
+                // 屏幕坐标转归一化坐标（0~1），并Y轴翻转
+                let screenPosNormalized = { x: pos.x / this.#renderCanvas.width, y: 1 - pos.y / this.#renderCanvas.height, z: this.#crossOn3DScreen.z }
+                // 转换为世界坐标
+                let worldPos = this.#vtkRenderer.normalizedDisplayToWorld(screenPosNormalized.x, screenPosNormalized.y, screenPosNormalized.z, 1)
+                // 计算在图像体素中的位置（整数索引）
+                let origin = this.#vtkSource.patientVolume.getOrigin()
+                let pixcelSpacing = this.#vtkSource.patientVolume.getSpacing()
+                let newCrossOnImage = [Math.round((worldPos[0] - origin[0]) / pixcelSpacing[0]), Math.round((worldPos[1] - origin[1]) / pixcelSpacing[1]), Math.round((worldPos[2] - origin[2]) / pixcelSpacing[2])]
+                //赋值
+                let temp = this.#GPARA
+                temp.pageS = newCrossOnImage[0]
+                temp.pageC = newCrossOnImage[1]
+                temp.pageT = newCrossOnImage[2]
+                this.#GPARA.value = { ...temp }
+            }
+            if (this.#crossRotateStart) {
+                let center = { x: this.#crossOn3DScreen.x, y: this.#crossOn3DScreen.y }
+                let start = this.#crossRotateStart
+                let end = pos
+                let vecA = [start.x - center.x, start.y - center.y]
+                let vecB = [end.x - center.x, end.y - center.y]
+                let radian = this.getAngle(vecA, vecB)  //弧度
+                let angle = Math.round(radian * (180 / Math.PI))//转成角度
+                if (angle != 0) {
+                    let temp = this.#GPARA
+                    if (this.#curViewMod === 0) {
+                        temp.rotateT = Number(temp.rotateT) + angle
+                    }
+                    if (this.#curViewMod === 1) {
+                        temp.rotateC = Number(temp.rotateC) + angle
+                    }
+                    if (this.#curViewMod === 2) {
+                        temp.rotateS = Number(temp.rotateS) + angle
+                    }
+                    this.#crossRotateStart = { ...end }
+                    this.#GPARA.value = { ...temp }
+                }
+            }
+            if (this.#crossThickStart) {
+                let { imatrix, axes } = this.#crossThickStart
+                let end = this.screenToCanvas(pos, imatrix)  //去除旋转的影响
+                let newThick
+                if (axes == 'x') {
+                    newThick = Math.abs(end.y)
+                } else {
+                    newThick = Math.abs(end.x)
+                }
+                newThick = 2 * newThick * this.#initPixelSpacing / Number(this.#GPARA.scale)
+                let minThick = 1
+                let temp = this.#GPARA
+                if (this.#curViewMod === 0) {
+                    if (axes === "x") {
+                        temp.thickC = newThick
+                    }
+                    if (axes === "y") {
+                        temp.thickS = newThick
+                    }
+                }
+                if (this.#curViewMod === 1) {
+                    if (axes === "x") {
+                        temp.thickT = newThick
+                    }
+                    if (axes === "y") {
+                        temp.thickS = newThick
+                    }
+                }
+                if (this.#curViewMod === 2) {
+                    if (axes === "x") {
+                        temp.thickT = newThick
+                    }
+                    if (axes === "y") {
+                        temp.thickC = newThick
+                    }
+                }
+                //层厚不能小于最小值
+                Number(temp.thickS) < minThick ? temp.thickS = minThick : temp.thickS = Number((Math.round(temp.thickS * 100) / 100).toFixed(2))
+                Number(temp.thickC) < minThick ? temp.thickC = minThick : temp.thickC = Number((Math.round(temp.thickC * 100) / 100).toFixed(2))
+                Number(temp.thickT) < minThick ? temp.thickT = minThick : temp.thickT = Number((Math.round(temp.thickT * 100) / 100).toFixed(2))
+                this.#GPARA.value = { ...temp }
 
-            // 最后一次绘制
-            this.drawCrossOn3d(this.#crossOn3DScreen);
+            }
         }
     }
 
@@ -562,139 +610,211 @@ class RenderEngine {
     }
 
     drawCrossOn3d (screenPos = {}) {
-        let ctx = this.#renderCanvas3D.getContext("2d");
-        ctx.clearRect(0, 0, this.#renderCanvas3D.width, this.#renderCanvas3D.height);
+        let ctx = this.#renderCanvas3D.getContext("2d")
+        ctx.clearRect(0, 0, this.#renderCanvas3D.width, this.#renderCanvas3D.height)
         ctx.save();
         //此处变换到了十字中心点所在的位置
         ctx.translate(this.#crossOn3DScreen.x, this.#crossOn3DScreen.y);
         ctx.rotate(this.#crossOn3DScreen.r);
 
-        let Dis = 60, rForCircle = 5, rForRect = 4, findRange = 10;
-        let circleDis = 2 * Dis, rectDis = Dis;
+        let Dis = 60, rForCircle = 5, rForRect = 4, findRange = 10
+        let circleDis = 2 * Dis, rectDis = Dis
 
-        let thicknessX, thicknessY;
-        let { thickT, thickC, thickS } = this.#GPARA;
-        thickT = Number(thickT); thickC = Number(thickC); thickS = Number(thickS);
+        let thicknessX, thicknessY
+        let { thickT, thickC, thickS } = this.#GPARA
+        thickT = Number(thickT); thickC = Number(thickC); thickS = Number(thickS)
 
+        // 依据视图模式选择厚度方向。注意：转换为屏幕单位后还缩小为一半（即绘制的是±厚度的一半线）
         switch (this.#curViewMod) {
             case 0: {
-                thicknessX = thickC;
-                thicknessY = thickS;
-                break;
+                thicknessX = thickC
+                thicknessY = thickS
+                break
             }
             case 1: {
-                thicknessX = thickT;
-                thicknessY = thickS;
-                break;
+                thicknessX = thickT
+                thicknessY = thickS
+                break
             }
             case 2: {
-                thicknessX = thickT;
-                thicknessY = thickC;
-                break;
+                thicknessX = thickT
+                thicknessY = thickC
+                break
+            }
+        }
+        //转换成屏幕上的层厚
+        thicknessX = (thicknessX / this.#initPixelSpacing) * Number(this.#GPARA.scale)
+        thicknessY = (thicknessY / this.#initPixelSpacing) * Number(this.#GPARA.scale)
+
+        thicknessX = thicknessX / 2
+        thicknessY = thicknessY / 2
+
+        let flag = { circleShow: false, rectShow: false, rectShowX: false, rectShowY: false }
+        let canvasPos = {}
+        const transform = ctx.getTransform()
+        const imatrix = transform.invertSelf()
+        if (screenPos.x && screenPos.y) {
+            canvasPos = this.screenToCanvas(screenPos, imatrix)
+            let { x, y } = canvasPos
+            if (x && y) {
+                // 判断鼠标靠近中心、厚度边缘位置，是否需要高亮 circle 或 rect
+                // circle 显示四角交互按钮，交互状态下可填充
+
+                // rect 显示厚度的可拖拽点，画小矩形判断鼠标是否选中
+                if (Math.abs(x) < findRange || Math.abs(y) < findRange) {
+                    flag.circleShow = true
+                    flag.rectShow = true
+                }
+                if (thicknessX > 1 && (Math.abs(y - thicknessX) < findRange || Math.abs(y + thicknessX) < findRange)) {
+                    flag.circleShow = true
+                    flag.rectShow = true
+                }
+                if (thicknessY > 1 && (Math.abs(x - thicknessY) < findRange || Math.abs(x + thicknessY) < findRange)) {
+                    flag.circleShow = true
+                    flag.rectShow = true
+                }
             }
         }
 
-        //转换成屏幕上的层厚
-        thicknessX = (thicknessX / this.#initPixelSpacing) * Number(this.#GPARA.scale);
-        thicknessY = (thicknessY / this.#initPixelSpacing) * Number(this.#GPARA.scale);
+        if (this.#crossRotateStart) {
+            flag.circleShow = true
+            flag.rectShow = false
+        }
+        if (this.#crossThickStart) {
+            flag.rectShow = true
+            flag.circleShow = false
+        }
 
-        thicknessX = thicknessX / 2;
-        thicknessY = thicknessY / 2;
+        let l = 3000, CD = 5
 
-        // Update lines based on orthogonal mode
+        ctx.lineWidth = 2;
+        let { colorX, colorY, dottedLine1, dottedLine2, thickLine } = this.#positionLine["curViewMod" + this.#curViewMod]
+
         let line = [
             {
-                strokeStyle: this.#positionLine["curViewMod" + this.#curViewMod].colorX,
-                c: { x1: -3000, y1: 0, x2: -5, y2: 0 },
-                dottSytle: this.#positionLine["curViewMod" + this.#curViewMod].dottedLine1
+                strokeStyle: colorX,
+                c: { x1: -l, y1: 0, x2: -CD, y2: 0 },
+                dottSytle: dottedLine1
             },
             {
-                strokeStyle: this.#positionLine["curViewMod" + this.#curViewMod].colorX,
-                c: { x1: 5, y1: 0, x2: 3000, y2: 0 },
-                dottSytle: this.#positionLine["curViewMod" + this.#curViewMod].dottedLine1
+                strokeStyle: colorX,
+                c: { x1: CD, y1: 0, x2: l, y2: 0 },
+                dottSytle: dottedLine1
             },
             {
-                strokeStyle: this.#positionLine["curViewMod" + this.#curViewMod].colorY,
-                c: { x1: 0, y1: -3000, x2: 0, y2: -5 },
-                dottSytle: this.#positionLine["curViewMod" + this.#curViewMod].dottedLine2
+                strokeStyle: colorY,
+                c: { x1: 0, y1: -l, x2: 0, y2: -CD },
+                dottSytle: dottedLine2
             },
             {
-                strokeStyle: this.#positionLine["curViewMod" + this.#curViewMod].colorY,
-                c: { x1: 0, y1: 5, x2: 0, y2: 3000 },
-                dottSytle: this.#positionLine["curViewMod" + this.#curViewMod].dottedLine2
+                strokeStyle: colorY,
+                c: { x1: 0, y1: CD, x2: 0, y2: l },
+                dottSytle: dottedLine2
             }
-        ];
-
+        ]
         if (thicknessX > 1) {
             for (let i = 0; i < 2; i++) {
-                let ele1 = {
-                    ...line[i],
-                    dottSytle: this.#positionLine["curViewMod" + this.#curViewMod].thickLine,
-                    c: { ...line[i].c, y1: -thicknessX, y2: -thicknessX }
-                };
-                line.push(ele1);
-                let ele2 = {
-                    ...ele1,
-                    c: { ...ele1.c, y1: thicknessX, y2: thicknessX }
-                };
-                line.push(ele2);
+                let ele1 = JSON.parse(JSON.stringify(line[i]))
+                ele1.dottSytle = thickLine
+                ele1.c.y1 = -thicknessX
+                ele1.c.y2 = -thicknessX
+                line.push(ele1)
+                let ele2 = JSON.parse(JSON.stringify(ele1))
+                ele2.c.y1 = thicknessX
+                ele2.c.y2 = thicknessX
+                line.push(ele2)
             }
         }
+        // 如果 Y 轴需要加粗（粗于 1 像素）
+        // 遍历的是 line[2] 和 line[3]，即 Y 轴的主线段
         if (thicknessY > 1) {
             for (let i = 2; i < 4; i++) {
-                let ele1 = {
-                    ...line[i],
-                    dottSytle: this.#positionLine["curViewMod" + this.#curViewMod].thickLine,
-                    c: { ...line[i].c, x1: -thicknessY, x2: -thicknessY }
-                };
-                line.push(ele1);
-                let ele2 = {
-                    ...ele1,
-                    c: { ...ele1.c, x1: thicknessY, x2: thicknessY }
-                };
-                line.push(ele2);
+                let ele1 = JSON.parse(JSON.stringify(line[i]))
+                ele1.dottSytle = thickLine
+                ele1.c.x1 = -thicknessY
+                ele1.c.x2 = -thicknessY
+                line.push(ele1)
+                let ele2 = JSON.parse(JSON.stringify(ele1))
+                ele2.c.x1 = thicknessY
+                ele2.c.x2 = thicknessY
+                line.push(ele2)
             }
         }
-
-        // Ensure orthogonal mode maintains the 90-degree angle between the lines
-        if (this.isOrthogonalRotation) {
-            line[2].c = { x1: 0, y1: -3000, x2: 0, y2: -5 };
-            line[3].c = { x1: 0, y1: 5, x2: 0, y2: 3000 };
-        }
-
-        // Draw the lines
         for (let i = 0; i < line.length; i++) {
-            this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle);
+            this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle)
         }
 
-        // Draw circles and rectangles (as before)
-        this.drawShapes(ctx, screenPos, circleDis, rectDis);
+        let circle = []
+        if (flag.circleShow) {
+            circle[0] = { c: { x: -circleDis, y: 0, r: rForCircle }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+            circle[1] = { c: { x: circleDis, y: 0, r: rForCircle }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+            circle[2] = { c: { x: 0, y: -circleDis, r: rForCircle }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+            circle[3] = { c: { x: 0, y: circleDis, r: rForCircle }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+        }
+        this.#circleChoosed = null
+        for (let i = 0; i < circle.length; i++) {
+            let { x, y } = canvasPos
+            // 判断鼠标是否在圆附近：用欧几里得距离判断是否在可点击范围
+            // 点 (x, y) 到圆心 (x_0, y_0) 的距离的平方小于或等于半径的平方
+            if (x && y && Math.pow(circle[i].c.x - x, 2) + Math.pow(circle[i].c.y - y, 2) <= Math.pow(findRange, 2)) {
+                circle[i].ifFill = true
+                this.#circleChoosed = this.canvseToScreen(circle[i].c, imatrix)
+            }
+            if (this.#crossRotateStart) {
+                circle[i].ifFill = true
+            }
+            this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
+        }
+
+
+        let rect = []
+        this.#rectChoosed = null
+        let indexFromXtoY
+        if (flag.rectShow) {
+            // 根据 thicknessX 是否大于 1 决定是否绘制上下方共 4 个方块，否则仅绘制中轴线 2 个
+            if (thicknessX > 1) {
+                rect[0] = { c: { x: -rectDis, y: -thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+                rect[1] = { c: { x: rectDis, y: -thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+                rect[2] = { c: { x: -rectDis, y: thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+                rect[3] = { c: { x: rectDis, y: thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+            } else {
+                rect[0] = { c: { x: -rectDis, y: 0, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+                rect[1] = { c: { x: rectDis, y: 0, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
+            }
+            indexFromXtoY = rect.length
+
+            if (thicknessY > 1) {
+                rect[indexFromXtoY] = { c: { x: -thicknessY, y: -rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+                rect[indexFromXtoY + 1] = { c: { x: -thicknessY, y: rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+                rect[indexFromXtoY + 2] = { c: { x: thicknessY, y: -rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+                rect[indexFromXtoY + 3] = { c: { x: thicknessY, y: rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+            } else {
+                rect[indexFromXtoY] = { c: { x: 0, y: -rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+                rect[indexFromXtoY + 1] = { c: { x: 0, y: rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
+            }
+        }
+        for (let i = 0; i < rect.length; i++) {
+            let { x, y } = canvasPos
+            if (x && y && Math.abs(rect[i].c.x - x) <= findRange && Math.abs(rect[i].c.y - y) <= findRange) {
+                rect[i].ifFill = true
+                this.#rectChoosed = this.canvseToScreen(rect[i].c, imatrix)
+                this.#rectChoosed.type = rect[i].type
+                if (i < indexFromXtoY) {
+                    this.#rectChoosed.axes = "x"
+                } else {
+                    this.#rectChoosed.axes = "y"
+                }
+                this.#rectChoosed.imatrix = imatrix
+            }
+            if (this.#crossThickStart) {
+                rect[i].ifFill = true
+            }
+            this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
+        }
+
+        //先画X轴
+
         ctx.restore();
-    }
-    drawShapes (ctx, screenPos, circleDis, rectDis) {
-        // 获取当前视图模式下的颜色配置
-        const { colorX, colorY } = this.#positionLine["curViewMod" + this.#curViewMod];
-
-        // 绘制圆形
-        const circleStyle = {
-            strokeStyle: colorX,
-            fillStyle: colorX,
-            ifFill: true
-        };
-        const circle1 = { x: -circleDis, y: 0, r: 5 };
-        const circle2 = { x: circleDis, y: 0, r: 5 };
-        this.drawCircle(ctx, circle1, circleStyle.ifFill, circleStyle.strokeStyle, circleStyle.fillStyle);
-        this.drawCircle(ctx, circle2, circleStyle.ifFill, circleStyle.strokeStyle, circleStyle.fillStyle);
-
-        // 绘制矩形
-        const rectStyle = {
-            strokeStyle: colorY,
-            fillStyle: colorY,
-            ifFill: true
-        };
-        const rect1 = { x: -rectDis, y: 0, r: 4 };
-        const rect2 = { x: rectDis, y: 0, r: 4 };
-        this.drawRect(ctx, rect1, rectStyle.ifFill, rectStyle.strokeStyle, rectStyle.fillStyle);
     }
 
     drawLine (ctx, c, dottSytle, strokeStyle) {

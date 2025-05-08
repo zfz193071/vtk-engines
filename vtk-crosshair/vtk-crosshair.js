@@ -35,6 +35,8 @@ const dom3 = document.getElementById("sagittal-yz")
 const widthC = Math.round(contents[0].clientWidth / 3)
 const heightC = contents[0].clientHeight
 
+let view3D = null
+
 const renderInit = {
     backgroupCanvas: "#000",
     borderColor: "#fff",
@@ -165,7 +167,8 @@ async function start () {
     //初始化操作
     selectOpt(Selectors[Selectors.length - 1])
     //3D渲染
-    render3DVR(testLocaCube3d.Actor)
+    // render3DVR(testLocaCube3d.Actor)
+    render3DView(testLocaCube3d.Actor)
     renderAll()
 }
 function render3DVR (actor) {
@@ -185,5 +188,55 @@ function render3DVR (actor) {
     renderWindow.render()
     console.log('3d render finished')
 }
+
+
+function render3DView (actor) {
+    const view3d = document.getElementById("render_3d");
+
+    // 创建基础渲染器和窗口
+    const renderer = vtk.Rendering.Core.vtkRenderer.newInstance();
+    const renderWindow = vtk.Rendering.Core.vtkRenderWindow.newInstance();
+    renderWindow.addRenderer(renderer);
+
+    // 创建 OpenGL 渲染窗口并挂载到 DOM
+    const openGLRenderWindow = vtk.Rendering.OpenGL.vtkRenderWindow.newInstance();
+    openGLRenderWindow.setContainer(view3d);
+    openGLRenderWindow.setSize(view3d.clientWidth, view3d.clientHeight);
+    renderWindow.addView(openGLRenderWindow);
+
+    // 创建交互器并绑定事件
+    const interactor = vtk.Rendering.Core.vtkRenderWindowInteractor.newInstance();
+    interactor.setView(openGLRenderWindow);
+    interactor.initialize();
+    interactor.bindEvents(view3d);
+
+    // 设置交互样式为 TrackballCamera
+    const interactorStyle = vtk.Interaction.Style.vtkInteractorStyleTrackballCamera.newInstance();
+    interactor.setInteractorStyle(interactorStyle);
+
+    // 初始化 view3D 对象
+    view3D = {
+        renderWindow,
+        renderer,
+        GLWindow: openGLRenderWindow,
+        interactor,
+        widgetManager: null,
+        orientationWidget: null,
+    };
+
+    // 设置相机和背景
+    renderer.getActiveCamera().setParallelProjection(true);
+    renderer.setBackground(0.5, 0.5, 0.5);
+
+    // 添加体渲染 actor
+    renderer.addVolume(actor);
+
+    // 重置相机并渲染
+    renderer.resetCamera();
+    renderer.resetCameraClippingRange();
+    renderWindow.render();
+
+}
+
 
 start()
