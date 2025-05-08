@@ -32,6 +32,7 @@ const contents = document.getElementsByClassName("content")
 const dom1 = document.getElementById("transverse-xy")
 const dom2 = document.getElementById("coronal-xz")
 const dom3 = document.getElementById("sagittal-yz")
+const dom3d = document.getElementById("render_3d");
 const widthC = Math.round(contents[0].clientWidth / 3)
 const heightC = contents[0].clientHeight
 
@@ -51,7 +52,10 @@ const viewports = {
     },
     "sagittal-yz": {
         renderEngine: new RenderEngine(dom3, renderInit, GPARA)
-    }
+    },
+    // "3d-view": {
+    //     renderEngine: new RenderEngine(dom3d, renderInit, GPARA),
+    // }
 }
 
 const viewportsKeys = Object.keys(viewports)
@@ -172,9 +176,9 @@ async function start () {
     renderAll()
 }
 function render3DVR (actor) {
-    const view3d = document.getElementById("render_3d");
+    const dom3d = document.getElementById("render_3d");
     const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
-        rootContainer: view3d,
+        rootContainer: dom3d,
         containerStyle: {
             height: '100%',
             width: '100%'
@@ -191,7 +195,6 @@ function render3DVR (actor) {
 
 
 function render3DView (actor) {
-    const view3d = document.getElementById("render_3d");
 
     // 创建基础渲染器和窗口
     const renderer = vtk.Rendering.Core.vtkRenderer.newInstance();
@@ -200,15 +203,15 @@ function render3DView (actor) {
 
     // 创建 OpenGL 渲染窗口并挂载到 DOM
     const openGLRenderWindow = vtk.Rendering.OpenGL.vtkRenderWindow.newInstance();
-    openGLRenderWindow.setContainer(view3d);
-    openGLRenderWindow.setSize(view3d.clientWidth, view3d.clientHeight);
+    openGLRenderWindow.setContainer(dom3d);
+    openGLRenderWindow.setSize(dom3d.clientWidth, dom3d.clientHeight);
     renderWindow.addView(openGLRenderWindow);
 
     // 创建交互器并绑定事件
     const interactor = vtk.Rendering.Core.vtkRenderWindowInteractor.newInstance();
     interactor.setView(openGLRenderWindow);
     interactor.initialize();
-    interactor.bindEvents(view3d);
+    interactor.bindEvents(dom3d);
 
     // 设置交互样式为 TrackballCamera
     const interactorStyle = vtk.Interaction.Style.vtkInteractorStyleTrackballCamera.newInstance();
@@ -222,6 +225,7 @@ function render3DView (actor) {
         interactor,
         widgetManager: null,
         orientationWidget: null,
+
     };
 
     // 设置相机和背景
