@@ -164,6 +164,13 @@ class RenderEngine {
             dottedLine2: [],
             thickLine: [7, 5]
         },
+        curViewMod3: {
+            colorX: this.#colorT,
+            colorY: this.#colorC,
+            dottedLine1: [],
+            dottedLine2: [],
+            thickLine: [7, 5]
+        },
     }
     // 选择的圆形和矩形
     #circleChoosed = null
@@ -1209,6 +1216,13 @@ class RenderEngine {
             y: Math.round(x * b + y * d + f)
         };
     }
+    getCrossOn3DScreen () {
+        return this.#crossOn3DScreen;
+    }
+    getVolume () {
+        return this.#vtkSource.patientVolume
+    }
+
 }
 
 export default RenderEngine;

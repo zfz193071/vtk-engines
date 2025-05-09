@@ -33,3 +33,7 @@
 - render3DVR() = 快速演示用的黑盒方案，适合入门或原型阶段；
 
 - render3DView() = 可维护、可扩展的工业级方案，更适合你正在构建的 DICOM 工具或三维教学系统
+
+# 为何十字线需要另外创建一个 canvas?
+
+VTK 的 `vtkOpenGLRenderWindow` 只负责 `WebGL` 的渲染（即 3D 场景），它不暴露一个可直接 `getContext('2d') `的 canvas

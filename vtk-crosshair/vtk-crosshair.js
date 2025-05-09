@@ -108,6 +108,10 @@ Object.defineProperty(GPARA, 'value', {
                 dom.value = newValue[ikey]
             }
         })
+        if (view3D.draw3DCrosshair) {
+            view3D.draw3DCrosshair();
+            view3D.renderWindow.render();
+        }
         renderAll()
     }
 });
@@ -195,25 +199,20 @@ function render3DVR (actor) {
 
 
 function render3DView (actor) {
-
-    // 创建基础渲染器和窗口
     const renderer = vtk.Rendering.Core.vtkRenderer.newInstance();
     const renderWindow = vtk.Rendering.Core.vtkRenderWindow.newInstance();
     renderWindow.addRenderer(renderer);
 
-    // 创建 OpenGL 渲染窗口并挂载到 DOM
     const openGLRenderWindow = vtk.Rendering.OpenGL.vtkRenderWindow.newInstance();
     openGLRenderWindow.setContainer(dom3d);
     openGLRenderWindow.setSize(dom3d.clientWidth, dom3d.clientHeight);
     renderWindow.addView(openGLRenderWindow);
 
-    // 创建交互器并绑定事件
     const interactor = vtk.Rendering.Core.vtkRenderWindowInteractor.newInstance();
     interactor.setView(openGLRenderWindow);
     interactor.initialize();
     interactor.bindEvents(dom3d);
 
-    // 设置交互样式为 TrackballCamera
     const interactorStyle = vtk.Interaction.Style.vtkInteractorStyleTrackballCamera.newInstance();
     interactor.setInteractorStyle(interactorStyle);
 
@@ -227,20 +226,88 @@ function render3DView (actor) {
         orientationWidget: null,
 
     };
-
-    // 设置相机和背景
     renderer.getActiveCamera().setParallelProjection(true);
     renderer.setBackground(0.5, 0.5, 0.5);
-
-    // 添加体渲染 actor
     renderer.addVolume(actor);
-
-    // 重置相机并渲染
     renderer.resetCamera();
     renderer.resetCameraClippingRange();
     renderWindow.render();
 
+    // 添加 Canvas 层绘制十字线
+    const canvas = document.createElement("canvas");
+    canvas.width = dom3d.clientWidth;
+    canvas.height = dom3d.clientHeight;
+    canvas.style.position = "absolute";
+    canvas.style.left = "0";
+    canvas.style.top = "0";
+    canvas.style.pointerEvents = "none";
+    canvas.style.zIndex = 999;
+    dom3d.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+
+    function draw3DCrosshair () {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const [pageS, pageC, pageT] = [
+            Number(GPARA.pageS),
+            Number(GPARA.pageC),
+            Number(GPARA.pageT),
+        ];
+        const [rotateT, rotateC, rotateS] = [
+            Number(GPARA.rotateT),
+            Number(GPARA.rotateC),
+            Number(GPARA.rotateS),
+        ];
+
+        const volume = viewports["transverse-xy"].renderEngine.getVolume();
+        const origin = volume.getOrigin();
+        const spacing = volume.getSpacing();
+
+        const worldPos = [
+            origin[0] + pageS * spacing[0],
+            origin[1] + pageC * spacing[1],
+            origin[2] + pageT * spacing[2],
+        ];
+
+        const displayCoords = renderer.worldToNormalizedDisplay(...worldPos, 1);
+        const x = displayCoords[0] * canvas.width;
+        const y = (1 - displayCoords[1]) * canvas.height;
+        const r = [rotateT, rotateC, rotateS][view3D.viewMode] * Math.PI / 180;
+
+        // 线长设置：全屏长度（可以超出 volume）
+        const lineLength = Math.max(canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(r);
+        ctx.lineWidth = 2;
+
+        // 绘制 X 轴（横线）
+        ctx.strokeStyle = "#8a00da";
+        ctx.beginPath();
+        ctx.moveTo(-lineLength, 0);
+        ctx.lineTo(lineLength, 0);
+        ctx.stroke();
+
+        // 绘制 Y 轴（竖线）
+        ctx.strokeStyle = "#cd9700";
+        ctx.beginPath();
+        ctx.moveTo(0, -lineLength);
+        ctx.lineTo(0, lineLength);
+        ctx.stroke();
+
+        ctx.restore();
+    }
+
+
+    // 挂钩到 view3D
+    view3D.draw3DCrosshair = draw3DCrosshair;
+    view3D.viewMode = 0; // 可动态设置为 T/C/S 视图编号
+
+    // 初始绘制
+    draw3DCrosshair();
 }
+
 
 
 start()
