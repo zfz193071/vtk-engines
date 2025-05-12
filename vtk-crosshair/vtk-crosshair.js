@@ -27,6 +27,27 @@ orthogonalToggle.addEventListener('change', function () {
     renderAll();
 });
 
+
+// const crossSectionState = {
+//     center: [x, y, z], // 切面交点中心坐标
+//     planes: {
+//         axial: {
+//             normal: [0, 0, 1],
+//             viewUp: [0, -1, 0]
+//         },
+//         sagittal: {
+//             normal: [1, 0, 0],
+//             viewUp: [0, 0, 1]
+//         },
+//         coronal: {
+//             normal: [0, 1, 0],
+//             viewUp: [0, 0, 1]
+//         }
+//     }
+// };
+
+
+
 //初始化render
 const contents = document.getElementsByClassName("content")
 const dom1 = document.getElementById("transverse-xy")
@@ -207,6 +228,19 @@ function render3DVR (actor) {
 //         Number(GPARA.rotateS) || 0
 //     );
 // }
+// function updateAllViews () {
+//     for (let key in viewports) {
+//         const view = viewports[key];
+//         const planeKey = getPlaneKeyFromViewportKey(key); // 例如 xy => axial
+//         const planeDef = crossSectionState.planes[planeKey];
+
+//         view.renderEngine.setCrossByMatrix({
+//             center: crossSectionState.center,
+//             normal: planeDef.normal,
+//             viewUp: planeDef.viewUp
+//         }, 1.0); // 示例厚度
+//     }
+// }
 
 
 function render3DView () {
@@ -235,7 +269,7 @@ function render3DView () {
         interactor,
         widgetManager: null,
         orientationWidget: null,
-
+        outlineActor: null // 存储outline actor的引用
     };
     renderer.getActiveCamera().setParallelProjection(true);
     renderer.setBackground(0.5, 0.5, 0.5);
@@ -247,122 +281,33 @@ function render3DView () {
     renderer.addActor(transverseActor);
     renderer.addActor(coronalActor);
     renderer.addActor(sagittalActor);
+
+    // 添加体数据的outline
+    const imageData = viewports["transverse-xy"].renderEngine.getVolume(); // 获取图像数据
+    if (imageData) {
+        // 创建一个图像外边界的包围盒（Outline）
+        const outline = vtk.Filters.General.vtkOutlineFilter.newInstance();
+        outline.setInputData(imageData);
+
+        // 创建 mapper（映射器），把 outline 几何映射成 WebGL 可以渲染的数据
+        const outlineMapper = vtk.Rendering.Core.vtkMapper.newInstance();
+        outlineMapper.setInputData(outline.getOutputData());
+
+        // 创建 actor，并添加到 3D 渲染器中
+        const outlineActor = vtk.Rendering.Core.vtkActor.newInstance();
+        outlineActor.setMapper(outlineMapper);
+        outlineActor.getProperty().setColor(1, 1, 1); // 设置为白色
+        outlineActor.getProperty().setLineWidth(2);   // 设置线宽
+
+        renderer.addActor(outlineActor);
+        view3D.outlineActor = outlineActor; // 保存引用以便后续操作
+    }
+
     renderer.resetCamera();
     renderer.resetCameraClippingRange();
     renderWindow.render();
 
-    // 添加 Canvas 层绘制十字线
-    const canvas = document.createElement("canvas");
-    canvas.width = dom3d.clientWidth;
-    canvas.height = dom3d.clientHeight;
-    canvas.style.position = "absolute";
-    canvas.style.left = "0";
-    canvas.style.top = "0";
-    canvas.style.pointerEvents = "none";
-    canvas.style.zIndex = 999;
-    dom3d.appendChild(canvas);
-    const ctx = canvas.getContext("2d");
-
-    function draw3DCrosshair () {
-        const isOrthogonalRotation = orthogonalToggle.checked
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const [pageS, pageC, pageT] = [
-            Number(GPARA.pageS),
-            Number(GPARA.pageC),
-            Number(GPARA.pageT),
-        ];
-        const [rotateT, rotateC, rotateS] = [
-            Number(GPARA.rotateT),
-            Number(GPARA.rotateC),
-            Number(GPARA.rotateS),
-        ];
-
-        const volume = viewports["transverse-xy"].renderEngine.getVolume();
-        const origin = volume.getOrigin();
-        const spacing = volume.getSpacing();
-
-        const worldPos = [
-            origin[0] + pageS * spacing[0],
-            origin[1] + pageC * spacing[1],
-            origin[2] + pageT * spacing[2],
-        ];
-
-        const displayCoords = renderer.worldToNormalizedDisplay(...worldPos, 1);
-        const x = displayCoords[0] * canvas.width;
-        const y = (1 - displayCoords[1]) * canvas.height;
-
-        // 当前视图模式下的旋转角度（单位：弧度）
-        const rotate = [rotateT, rotateC, rotateS];
-        const r = rotate[view3D.viewMode] * Math.PI / 180;
-
-        // 线长设置：全屏长度
-        const lineLength = Math.max(canvas.width, canvas.height);
-
-        ctx.save();
-        ctx.translate(x, y);
-        console.log("view3D.viewMode: ", view3D.viewMode)
-
-        if (isOrthogonalRotation) {
-            // 正交旋转：整体旋转十字
-            ctx.rotate(r);
-            ctx.lineWidth = 2;
-
-            // 绘制 X 轴（横线）
-            ctx.strokeStyle = "#8a00da";
-            ctx.beginPath();
-            ctx.moveTo(-lineLength, 0);
-            ctx.lineTo(lineLength, 0);
-            ctx.stroke();
-
-            // 绘制 Y 轴（竖线）
-            ctx.strokeStyle = "#cd9700";
-            ctx.beginPath();
-            ctx.moveTo(0, -lineLength);
-            ctx.lineTo(0, lineLength);
-            ctx.stroke();
-        } else {
-            // 非正交旋转：分别旋转两条线
-
-            // 横向线（X轴）旋转
-            ctx.save();
-            let rx = view3D.viewMode === 0 ? rotateT : view3D.viewMode === 1 ? rotateC : rotateS;
-            ctx.rotate((rx * Math.PI) / 180);
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#8a00da";
-            ctx.beginPath();
-            ctx.moveTo(-lineLength, 0);
-            ctx.lineTo(lineLength, 0);
-            ctx.stroke();
-            ctx.restore();
-
-            // 纵向线（Y轴）不旋转或按另一个轴旋转
-            ctx.save();
-            let ry = 0; // 默认不转
-            if (view3D.viewMode === 0) ry = rotateC;
-            if (view3D.viewMode === 1) ry = rotateS;
-            if (view3D.viewMode === 2) ry = rotateC;
-            ctx.rotate((ry * Math.PI) / 180);
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#cd9700";
-            ctx.beginPath();
-            ctx.moveTo(0, -lineLength);
-            ctx.lineTo(0, lineLength);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        ctx.restore();
-    }
-
-
-
-    // 挂钩到 view3D
-    view3D.draw3DCrosshair = draw3DCrosshair;
     view3D.viewMode = 0;
-
-    // 初始绘制
-    draw3DCrosshair();
 }
 
 

@@ -288,6 +288,24 @@ class RenderEngine {
         this.#clipPlane2.setNormal(clipPlaneNormal2);
         this.#clipPlane2.setOrigin(clipPlaneOrigin2);
     }
+    // renderEngine.js
+    setCrossByMatrix ({ center, normal, viewUp }, thickness) {
+        const zAxis = normal;
+        const xAxis = vtkMath.cross(viewUp, zAxis, []);
+        vtkMath.normalize(xAxis);
+        const yAxis = viewUp;
+
+        const axes = [
+            xAxis[0], xAxis[1], xAxis[2], 0,
+            yAxis[0], yAxis[1], yAxis[2], 0,
+            zAxis[0], zAxis[1], zAxis[2], 0,
+            center[0], center[1], center[2], 1
+        ];
+
+        // this.#reslice.setResliceAxes(axes);
+        // this.#reslice.setSlabThickness(thickness);
+    }
+
     // 设置十字定位方法
     // 根据患者体积的原点、间距、十字定位位置和旋转角度计算坐标轴和裁剪平面的法线、原点，
     // 并设置裁剪平面的属性
