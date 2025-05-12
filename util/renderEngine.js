@@ -78,7 +78,6 @@ class RenderEngine {
     #vtkRootDom = null
     #vtkRenderWindow = null
     #vtkRenderer = null
-    #vtkImgReslice = null
 
     // 数据源、裁剪平面、图像数据、像素间距、视图模式、融合透明度
     #vtkSource = null
@@ -130,7 +129,7 @@ class RenderEngine {
         r: 0
     }
     // 新坐标轴、颜色
-    #newaxes = { newX: [1, 0, 0], newY: [0, 1, 0], newZ: [0, 0, 1], newCenter: [128, 128, 60] }
+    #newaxes = { newX: [1, 0, 0], newY: [0, 1, 0], newZ: [0, 0, 1] }
     #colorS = "#3470d8"
     #colorC = "#cd9700"
     #colorT = "#8a00da"
@@ -177,9 +176,7 @@ class RenderEngine {
     #circleChoosed = null
     #rectChoosed = null
 
-    getContainer () {
-        return this.#vtkRootDom
-    }
+
     setProps (para) {
         this.#props = { ...this.#props, ...para }
         let props = this.#props
@@ -245,15 +242,6 @@ class RenderEngine {
     getActor () {
         return this.#vtkSource.Actor
     }
-    getReslice () {
-        return this.#vtkImgReslice
-    }
-    getRenderer () {
-        return this.#vtkRenderer;
-    }
-    getRendererWindow () {
-        return this.#vtkRenderWindow
-    }
     // 设置页面方法（旧版）
     // 根据当前视图模式计算裁剪平面的法线和原点，并设置裁剪平面的属性
     setPage_old (page, thicknessArr, rotateAngelGlobal) {
@@ -300,7 +288,6 @@ class RenderEngine {
         this.#clipPlane2.setNormal(clipPlaneNormal2);
         this.#clipPlane2.setOrigin(clipPlaneOrigin2);
     }
-
     // 设置十字定位方法
     // 根据患者体积的原点、间距、十字定位位置和旋转角度计算坐标轴和裁剪平面的法线、原点，
     // 并设置裁剪平面的属性
@@ -513,7 +500,6 @@ class RenderEngine {
         let axes = this.getAxes(volumeOrigin, volumeSpacing, crossPosOnImage, rotateArr)
         imageReslice.setSlabNumberOfSlices(this.#thickness);
         imageReslice.setResliceAxes(axes)
-        this.#vtkImgReslice = imageReslice
         let obliqueSlice = imageReslice.getOutputData();
         let dataArray = obliqueSlice.getPointData().getScalars().getData();
         // 调用 getDataWithInfo 方法获取图像数据及相关信息
