@@ -112,6 +112,7 @@ Object.defineProperty(GPARA, 'value', {
             view3D.draw3DCrosshair();
             view3D.renderWindow.render();
         }
+        update3DVolumeTransform(newValue)
         renderAll()
     }
 });
@@ -198,6 +199,17 @@ function render3DVR (actor) {
 }
 
 
+function update3DVolumeTransform (GPARA) {
+
+    // 设置变换到体数据 actor 上
+    view3D.actor.setOrientation(
+        Number(GPARA.rotateT) || 0,
+        Number(GPARA.rotateC) || 0,
+        Number(GPARA.rotateS) || 0
+    );
+}
+
+
 function render3DView (actor) {
     const renderer = vtk.Rendering.Core.vtkRenderer.newInstance();
     const renderWindow = vtk.Rendering.Core.vtkRenderWindow.newInstance();
@@ -222,6 +234,7 @@ function render3DView (actor) {
         renderer,
         GLWindow: openGLRenderWindow,
         interactor,
+        actor,
         widgetManager: null,
         orientationWidget: null,
 
