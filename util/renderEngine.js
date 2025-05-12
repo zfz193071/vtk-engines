@@ -78,6 +78,7 @@ class RenderEngine {
     #vtkRootDom = null
     #vtkRenderWindow = null
     #vtkRenderer = null
+    #vtkImgReslice = null
 
     // 数据源、裁剪平面、图像数据、像素间距、视图模式、融合透明度
     #vtkSource = null
@@ -129,7 +130,7 @@ class RenderEngine {
         r: 0
     }
     // 新坐标轴、颜色
-    #newaxes = { newX: [1, 0, 0], newY: [0, 1, 0], newZ: [0, 0, 1] }
+    #newaxes = { newX: [1, 0, 0], newY: [0, 1, 0], newZ: [0, 0, 1], newCenter: [128, 128, 60] }
     #colorS = "#3470d8"
     #colorC = "#cd9700"
     #colorT = "#8a00da"
@@ -176,7 +177,9 @@ class RenderEngine {
     #circleChoosed = null
     #rectChoosed = null
 
-
+    getContainer () {
+        return this.#vtkRootDom
+    }
     setProps (para) {
         this.#props = { ...this.#props, ...para }
         let props = this.#props
@@ -243,7 +246,7 @@ class RenderEngine {
         return this.#vtkSource.Actor
     }
     getReslice () {
-        return this.#vtkSource.Reslice
+        return this.#vtkImgReslice
     }
     getRenderer () {
         return this.#vtkRenderer;
@@ -510,6 +513,7 @@ class RenderEngine {
         let axes = this.getAxes(volumeOrigin, volumeSpacing, crossPosOnImage, rotateArr)
         imageReslice.setSlabNumberOfSlices(this.#thickness);
         imageReslice.setResliceAxes(axes)
+        this.#vtkImgReslice = imageReslice
         let obliqueSlice = imageReslice.getOutputData();
         let dataArray = obliqueSlice.getPointData().getScalars().getData();
         // 调用 getDataWithInfo 方法获取图像数据及相关信息
