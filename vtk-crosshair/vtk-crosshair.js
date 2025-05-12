@@ -6,7 +6,6 @@
  * @Description: 
  */
 
-
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import RenderEngine from "../util/renderEngine.js";
 import DataWithInfo from "../util/tDataWithInfo.js";
@@ -28,23 +27,23 @@ orthogonalToggle.addEventListener('change', function () {
 });
 
 
-// const crossSectionState = {
-//     center: [x, y, z], // 切面交点中心坐标
-//     planes: {
-//         axial: {
-//             normal: [0, 0, 1],
-//             viewUp: [0, -1, 0]
-//         },
-//         sagittal: {
-//             normal: [1, 0, 0],
-//             viewUp: [0, 0, 1]
-//         },
-//         coronal: {
-//             normal: [0, 1, 0],
-//             viewUp: [0, 0, 1]
-//         }
-//     }
-// };
+const crossSectionState = {
+    center: [128, 128, 60],
+    planes: {
+        axial: {
+            normal: [0, 0, 1],
+            viewUp: [0, -1, 0]
+        },
+        sagittal: {
+            normal: [1, 0, 0],
+            viewUp: [0, 0, 1]
+        },
+        coronal: {
+            normal: [0, 1, 0],
+            viewUp: [0, 0, 1]
+        }
+    }
+};
 
 
 
@@ -83,6 +82,10 @@ const viewportsKeys = Object.keys(viewports)
 
 for (let key in viewportsKeys) {
     viewports[viewportsKeys[key]].renderEngine.setOrthogonalRotation(orthogonalToggle.checked);
+    const viewId = viewportsKeys[key];
+    if (viewId !== '3d') {
+        addCrosshairTo2D(viewId, viewports[viewId], viewports);
+    }
 }
 
 const Selectors = document.getElementsByClassName("optSelector")
@@ -170,7 +173,7 @@ function renderAll_3D () {
         let key = viewportsKeys[i]
         viewports[key].renderEngine.setWWWL(ww, wl)
         viewports[key].renderEngine.setCurrenViewMod(i)
-        viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
+        // viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
         viewports[key].renderEngine.setScale3D(scale, rotateAngelGlobal)
         viewports[key].renderEngine.render3d()
     }
@@ -199,6 +202,7 @@ async function start () {
     //3D渲染
     // render3DVR(testLocaCube3d.Actor)
     render3DView()
+    updateAllViews(viewports)
     renderAll()
 }
 function render3DVR (actor) {
@@ -228,19 +232,110 @@ function render3DVR (actor) {
 //         Number(GPARA.rotateS) || 0
 //     );
 // }
-// function updateAllViews () {
-//     for (let key in viewports) {
-//         const view = viewports[key];
-//         const planeKey = getPlaneKeyFromViewportKey(key); // 例如 xy => axial
-//         const planeDef = crossSectionState.planes[planeKey];
+// 重采样矩阵
+function buildResliceAxes (normal, viewUp, center) {
+    const vtkMath = vtk.Common.Core.vtkMath;
+    const x = vtkMath.cross([], viewUp, normal);
+    vtkMath.normalize(x);
+    const y = viewUp;
+    const z = normal;
 
-//         view.renderEngine.setCrossByMatrix({
-//             center: crossSectionState.center,
-//             normal: planeDef.normal,
-//             viewUp: planeDef.viewUp
-//         }, 1.0); // 示例厚度
-//     }
-// }
+    return [
+        x[0], x[1], x[2], 0,
+        y[0], y[1], y[2], 0,
+        z[0], z[1], z[2], 0,
+        center[0], center[1], center[2], 1,
+    ];
+}
+
+function updateAllViews (viewports) {
+    Object.entries(viewports).forEach(([id, v]) => {
+        if (!v.renderEngine) return;
+        const planeKey = getPlaneKeyFromId(id);
+        const { normal, viewUp } = crossSectionState.planes[planeKey];
+        const axes = buildResliceAxes(normal, viewUp, crossSectionState.center);
+        v.renderEngine.getReslice().setResliceAxes(axes);
+        v.renderEngine.getReslice().modified();
+        v.renderWindow.render();
+    });
+}
+
+function getPlaneKeyFromId (id) {
+    if (id.includes('xy')) return 'axial';
+    if (id.includes('xz')) return 'coronal';
+    if (id.includes('yz')) return 'sagittal';
+    return 'axial';
+}
+function addCrosshairTo2D (viewId, viewport, viewports) {
+    const planeKey = getPlaneKeyFromId(viewId);
+    const center = crossSectionState.center;
+
+    const otherPlanes = Object.keys(crossSectionState.planes).filter(k => k !== planeKey);
+    const renderer = viewport.renderEngine.getRenderer();
+    const renderWindow = viewport.renderEngine.getRendererWindow();
+
+    const widgetManager = vtk.Widgets.Core.vtkWidgetManager.newInstance();
+    widgetManager.setRenderer(renderer);
+
+    otherPlanes.forEach(planeName => {
+        const normal = crossSectionState.planes[planeName].normal;
+        const dir = normal.map(n => n === 0 ? 1 : 0); // orthogonal axis
+
+        const halfLength = 100;
+        const p1 = center.map((c, i) => c - dir[i] * halfLength);
+        const p2 = center.map((c, i) => c + dir[i] * halfLength);
+
+        const lineSource = vtk.Filters.Sources.vtkLineSource.newInstance();
+        lineSource.setPoint1(p1);
+        lineSource.setPoint2(p2);
+
+        const mapper = vtk.Rendering.Core.vtkMapper.newInstance();
+        mapper.setInputConnection(lineSource.getOutputPort());
+
+        const actor = vtk.Rendering.Core.vtkActor.newInstance();
+        actor.setMapper(mapper);
+        actor.getProperty().setColor(1, 0, 0);
+        actor.getProperty().setLineWidth(2);
+        renderer.addActor(actor);
+
+        // const vtkHandleWidget = vtk.Widgets.Widgets3D.HandleWidget;
+        // const vtkSphereHandleRepresentation = vtk.Widgets.Widgets3D.SphereHandleRepresentation;
+
+        // // 创建第一个 handle
+        // const rep1 = vtkSphereHandleRepresentation.newInstance();
+        // rep1.setWorldPosition(p1);
+        // rep1.setHandleSizeInPixels(6);
+
+        // const handle1 = vtkHandleWidget.newInstance();
+        // handle1.setWidgetRep(rep1);
+
+        // // 创建第二个 handle
+        // const rep2 = vtkSphereHandleRepresentation.newInstance();
+        // rep2.setWorldPosition(p2);
+        // rep2.setHandleSizeInPixels(6);
+
+        // const handle2 = vtkHandleWidget.newInstance();
+        // handle2.setWidgetRep(rep2);
+
+        // widgetManager.addWidget(handle1);
+        // widgetManager.addWidget(handle2);
+        widgetManager.enablePicking();
+
+        const onMove = () => {
+            const a = rep1.getWorldPosition();
+            const b = rep2.getWorldPosition();
+            const newCenter = [0, 0, 0];
+            for (let i = 0; i < 3; i++) newCenter[i] = (a[i] + b[i]) / 2;
+            crossSectionState.center = newCenter;
+            updateAllViews(viewports);
+        };
+
+        // handle1.onInteractionEvent(onMove);
+        // handle2.onInteractionEvent(onMove);
+    });
+
+    renderWindow.render();
+}
 
 
 function render3DView () {

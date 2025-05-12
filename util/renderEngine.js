@@ -242,6 +242,15 @@ class RenderEngine {
     getActor () {
         return this.#vtkSource.Actor
     }
+    getReslice () {
+        return this.#vtkSource.Reslice
+    }
+    getRenderer () {
+        return this.#vtkRenderer;
+    }
+    getRendererWindow () {
+        return this.#vtkRenderWindow
+    }
     // 设置页面方法（旧版）
     // 根据当前视图模式计算裁剪平面的法线和原点，并设置裁剪平面的属性
     setPage_old (page, thicknessArr, rotateAngelGlobal) {
@@ -287,23 +296,6 @@ class RenderEngine {
         this.#clipPlane1.setOrigin(clipPlaneOrigin1);
         this.#clipPlane2.setNormal(clipPlaneNormal2);
         this.#clipPlane2.setOrigin(clipPlaneOrigin2);
-    }
-    // renderEngine.js
-    setCrossByMatrix ({ center, normal, viewUp }, thickness) {
-        const zAxis = normal;
-        const xAxis = vtkMath.cross(viewUp, zAxis, []);
-        vtkMath.normalize(xAxis);
-        const yAxis = viewUp;
-
-        const axes = [
-            xAxis[0], xAxis[1], xAxis[2], 0,
-            yAxis[0], yAxis[1], yAxis[2], 0,
-            zAxis[0], zAxis[1], zAxis[2], 0,
-            center[0], center[1], center[2], 1
-        ];
-
-        // this.#reslice.setResliceAxes(axes);
-        // this.#reslice.setSlabThickness(thickness);
     }
 
     // 设置十字定位方法
