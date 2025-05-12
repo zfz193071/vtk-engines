@@ -114,6 +114,7 @@ function createSyntheticImageData (dims) {
   return imageData;
 }
 
+// 将 [0~1] 的 RGB 数组转换为 "rgb(r, g, b)" 字符串
 function createRGBStringFromRGBValues (rgb) {
   if (rgb.length !== 3) {
     return 'rgb(0, 0, 0)';
@@ -122,12 +123,16 @@ function createRGBStringFromRGBValues (rgb) {
     rgb[2] * 255
   ).toString()})`;
 }
-
+// 保存初始切面状态
 const initialPlanesState = { ...widgetState.getPlanes() };
 
 let view3D = null;
 
+// 构建一个包含 3 个 2D MPR（Multi-Planar Reconstruction）视图和一个 3D 视图的医学图像交互系统
 for (let i = 0; i < 4; i++) {
+  // 创建外层容器 elementParent
+  // 添加内层真正放 renderer 的 element
+  // 并加入到 container 中
   const elementParent = document.createElement('div');
   elementParent.setAttribute('class', 'view');
   elementParent.style.width = '50%';
@@ -142,6 +147,7 @@ for (let i = 0; i < 4; i++) {
 
   container.appendChild(elementParent);
 
+  // 创建 VTK 渲染窗口，设置 DOM 容器
   const grw = vtkGenericRenderWindow.newInstance();
   grw.setContainer(element);
   grw.resize();
@@ -325,23 +331,30 @@ function updateReslice (
     slider: null,
   }
 ) {
+  // 更新重采样切面位置
   const modified = widget.updateReslicePlane(
     interactionContext.reslice,
     interactionContext.viewType
   );
   if (modified) {
+    // 获取当前采样切面的 4x4 坐标变换矩阵
     const resliceAxes = interactionContext.reslice.getResliceAxes();
     // Get returned modified from setter to know if we have to render
+    // 应用到显示该图像的 actor 上
     interactionContext.actor.setUserMatrix(resliceAxes);
+    // 通过 getPlaneSource 拿到当前切面的三角形定义
     const planeSource = widget.getPlaneSource(interactionContext.viewType);
+    // 分别设置：左下角、右下角、左上角 三个球体的位置
     interactionContext.sphereSources[0].setCenter(planeSource.getOrigin());
     interactionContext.sphereSources[1].setCenter(planeSource.getPoint1());
     interactionContext.sphereSources[2].setCenter(planeSource.getPoint2());
 
     if (interactionContext.slider) {
+      // 获取当前切面的两端点：用来计算最大滑动范围
       const planeExtremities = widget.getPlaneExtremities(
         interactionContext.viewType
       );
+      // 计算这两个端点之间的直线距离作为 slider 的最大值
       const length = Math.sqrt(
         vtkMath.distance2BetweenPoints(planeExtremities[0], planeExtremities[1])
       );
@@ -351,11 +364,13 @@ function updateReslice (
           widgetState.getCenter()
         )
       );
+      // 当前切面中心距离端点的距离作为滑块当前值
       interactionContext.slider.min = 0;
       interactionContext.slider.max = length;
       interactionContext.slider.value = dist;
     }
   }
+  // 更新摄像机视角
   widget.updateCameraPoints(
     interactionContext.renderer,
     interactionContext.viewType,
@@ -366,6 +381,7 @@ function updateReslice (
   return modified;
 }
 
+// 用于从 HTTP 路径加载 .vti（VTK 图像数据）文件。设置 fetchGzip: true 表示支持 .gz 压缩文件
 const reader = vtkHttpDataSetReader.newInstance({ fetchGzip: true });
 reader.setUrl(`${__BASE_PATH__}/data/volume/LIDC2.vti`).then(() => {
   reader.loadData().then(() => {

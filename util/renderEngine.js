@@ -239,6 +239,9 @@ class RenderEngine {
         this.#vtkRenderer.addActor(source.Actor)
         //增加平面
     }
+    getActor () {
+        return this.#vtkSource.Actor
+    }
     // 设置页面方法（旧版）
     // 根据当前视图模式计算裁剪平面的法线和原点，并设置裁剪平面的属性
     setPage_old (page, thicknessArr, rotateAngelGlobal) {
@@ -288,25 +291,44 @@ class RenderEngine {
     // 设置十字定位方法
     // 根据患者体积的原点、间距、十字定位位置和旋转角度计算坐标轴和裁剪平面的法线、原点，
     // 并设置裁剪平面的属性
+    // crossPosOnImage：图像空间中的十字线位置（如 [s, c, t]）
+    // thicknessArr：层厚数组，分别表示 T/C/S 三个方向的厚度
+    // rotateAngelGlobal：全局旋转角度数组，对应 T/C/S 三个方向
     setCross (crossPosOnImage, thicknessArr, rotateAngelGlobal) {
+        // 获取当前体积数据（volume）对象
         let patientVolume = this.#vtkSource.patientVolume
+        // origin 是体数据的起点坐标（世界坐标系）
         let volumeOrigin = patientVolume.getOrigin()
+        // spacing 是每个像素/体素的物理间距
         let volumeSpacing = patientVolume.getSpacing()
         let clipPlaneNormal1, clipPlaneNormal2, clipPlaneOrigin1 = [], clipPlaneOrigin2 = []
+        // 通过体素位置和旋转角度，计算一个 变换矩阵（4x4），描述了当前视图的方向和原点
         const axes = this.getAxes(volumeOrigin, volumeSpacing, crossPosOnImage, rotateAngelGlobal)
+        // 从 4×4 的 axes 矩阵中提取：
+        // newX：X轴方向（横向线方向）
+        // newY：Y轴方向（纵向线方向）
+        // newZ：Z轴方向（层厚方向）
+        // newCenter：当前截面中心在世界坐标中的位置
         let newX = [axes[0], axes[1], axes[2]]
         let newY = [axes[4], axes[5], axes[6]]
         let newZ = [axes[8], axes[9], axes[10]]
         //截取平面时坐标原点的世界坐标
         let newCenter = [axes[12], axes[13], axes[14]]
+        // 存储当前截面坐标系统，用于其他模块（比如拖动、旋转十字线）
         this.#newaxes = { newX, newY, newZ, newCenter }
+        // 根据当前视图模式（T/C/S），获取当前方向上的层厚
         this.#thickness = thicknessArr[this.#curViewMod]
+        // clipPlaneNormal1 与 clipPlaneNormal2 是 两个相反方向的法向量，用于两个反向平面的裁剪
         clipPlaneNormal1 = [newZ[0], newZ[1], newZ[2]]
         clipPlaneNormal2 = [-newZ[0], -newZ[1], -newZ[2]]
+        // 从 newCenter 出发，沿 Z 方向的正负方向偏移一半的层厚，得到两个平面的位置
+        // 这两个平面形成一个 slab（截面厚度区间）
         for (let i = 0; i < 3; i++) {
             clipPlaneOrigin1[i] = newCenter[i] - this.#thickness / 2 * newZ[i]
             clipPlaneOrigin2[i] = newCenter[i] + this.#thickness / 2 * newZ[i]
         }
+        // 将计算出的 法向量和原点 应用到两个 vtkPlane 对象上
+        // 通常这两个平面被用于设置 vtkImageReslice 或 vtkVolumeMapper 的剪裁
         this.#clipPlane1.setNormal(clipPlaneNormal1);
         this.#clipPlane1.setOrigin(clipPlaneOrigin1);
         this.#clipPlane2.setNormal(clipPlaneNormal2);

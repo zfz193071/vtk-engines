@@ -108,11 +108,11 @@ Object.defineProperty(GPARA, 'value', {
                 dom.value = newValue[ikey]
             }
         })
-        if (view3D.draw3DCrosshair) {
-            view3D.draw3DCrosshair();
-            view3D.renderWindow.render();
-        }
-        update3DVolumeTransform(newValue)
+        // if (view3D.draw3DCrosshair) {
+        //     view3D.draw3DCrosshair();
+        //     view3D.renderWindow.render();
+        // }
+        // update3DVolumeTransform(newValue)
         renderAll()
     }
 });
@@ -177,7 +177,7 @@ async function start () {
     selectOpt(Selectors[Selectors.length - 1])
     //3D渲染
     // render3DVR(testLocaCube3d.Actor)
-    render3DView(testLocaCube3d.Actor)
+    render3DView()
     renderAll()
 }
 function render3DVR (actor) {
@@ -199,18 +199,17 @@ function render3DVR (actor) {
 }
 
 
-function update3DVolumeTransform (GPARA) {
+// function update3DVolumeTransform (GPARA) {
+//     // 设置变换到体数据 actor 上
+//     view3D.actor.setOrientation(
+//         Number(GPARA.rotateT) || 0,
+//         Number(GPARA.rotateC) || 0,
+//         Number(GPARA.rotateS) || 0
+//     );
+// }
 
-    // 设置变换到体数据 actor 上
-    view3D.actor.setOrientation(
-        Number(GPARA.rotateT) || 0,
-        Number(GPARA.rotateC) || 0,
-        Number(GPARA.rotateS) || 0
-    );
-}
 
-
-function render3DView (actor) {
+function render3DView () {
     const renderer = vtk.Rendering.Core.vtkRenderer.newInstance();
     const renderWindow = vtk.Rendering.Core.vtkRenderWindow.newInstance();
     renderWindow.addRenderer(renderer);
@@ -234,14 +233,20 @@ function render3DView (actor) {
         renderer,
         GLWindow: openGLRenderWindow,
         interactor,
-        actor,
         widgetManager: null,
         orientationWidget: null,
 
     };
     renderer.getActiveCamera().setParallelProjection(true);
     renderer.setBackground(0.5, 0.5, 0.5);
-    renderer.addVolume(actor);
+
+    const transverseActor = viewports["transverse-xy"].renderEngine.getActor(); // z轴切片
+    const coronalActor = viewports["coronal-xz"].renderEngine.getActor();       // y轴切片
+    const sagittalActor = viewports["sagittal-yz"].renderEngine.getActor();     // x轴切片
+
+    renderer.addActor(transverseActor);
+    renderer.addActor(coronalActor);
+    renderer.addActor(sagittalActor);
     renderer.resetCamera();
     renderer.resetCameraClippingRange();
     renderWindow.render();
@@ -259,6 +264,7 @@ function render3DView (actor) {
     const ctx = canvas.getContext("2d");
 
     function draw3DCrosshair () {
+        const isOrthogonalRotation = orthogonalToggle.checked
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         const [pageS, pageC, pageT] = [
@@ -285,37 +291,75 @@ function render3DView (actor) {
         const displayCoords = renderer.worldToNormalizedDisplay(...worldPos, 1);
         const x = displayCoords[0] * canvas.width;
         const y = (1 - displayCoords[1]) * canvas.height;
-        const r = [rotateT, rotateC, rotateS][view3D.viewMode] * Math.PI / 180;
 
-        // 线长设置：全屏长度（可以超出 volume）
+        // 当前视图模式下的旋转角度（单位：弧度）
+        const rotate = [rotateT, rotateC, rotateS];
+        const r = rotate[view3D.viewMode] * Math.PI / 180;
+
+        // 线长设置：全屏长度
         const lineLength = Math.max(canvas.width, canvas.height);
 
         ctx.save();
         ctx.translate(x, y);
-        ctx.rotate(r);
-        ctx.lineWidth = 2;
+        console.log("view3D.viewMode: ", view3D.viewMode)
 
-        // 绘制 X 轴（横线）
-        ctx.strokeStyle = "#8a00da";
-        ctx.beginPath();
-        ctx.moveTo(-lineLength, 0);
-        ctx.lineTo(lineLength, 0);
-        ctx.stroke();
+        if (isOrthogonalRotation) {
+            // 正交旋转：整体旋转十字
+            ctx.rotate(r);
+            ctx.lineWidth = 2;
 
-        // 绘制 Y 轴（竖线）
-        ctx.strokeStyle = "#cd9700";
-        ctx.beginPath();
-        ctx.moveTo(0, -lineLength);
-        ctx.lineTo(0, lineLength);
-        ctx.stroke();
+            // 绘制 X 轴（横线）
+            ctx.strokeStyle = "#8a00da";
+            ctx.beginPath();
+            ctx.moveTo(-lineLength, 0);
+            ctx.lineTo(lineLength, 0);
+            ctx.stroke();
+
+            // 绘制 Y 轴（竖线）
+            ctx.strokeStyle = "#cd9700";
+            ctx.beginPath();
+            ctx.moveTo(0, -lineLength);
+            ctx.lineTo(0, lineLength);
+            ctx.stroke();
+        } else {
+            // 非正交旋转：分别旋转两条线
+
+            // 横向线（X轴）旋转
+            ctx.save();
+            let rx = view3D.viewMode === 0 ? rotateT : view3D.viewMode === 1 ? rotateC : rotateS;
+            ctx.rotate((rx * Math.PI) / 180);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#8a00da";
+            ctx.beginPath();
+            ctx.moveTo(-lineLength, 0);
+            ctx.lineTo(lineLength, 0);
+            ctx.stroke();
+            ctx.restore();
+
+            // 纵向线（Y轴）不旋转或按另一个轴旋转
+            ctx.save();
+            let ry = 0; // 默认不转
+            if (view3D.viewMode === 0) ry = rotateC;
+            if (view3D.viewMode === 1) ry = rotateS;
+            if (view3D.viewMode === 2) ry = rotateC;
+            ctx.rotate((ry * Math.PI) / 180);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = "#cd9700";
+            ctx.beginPath();
+            ctx.moveTo(0, -lineLength);
+            ctx.lineTo(0, lineLength);
+            ctx.stroke();
+            ctx.restore();
+        }
 
         ctx.restore();
     }
 
 
+
     // 挂钩到 view3D
     view3D.draw3DCrosshair = draw3DCrosshair;
-    view3D.viewMode = 0; // 可动态设置为 T/C/S 视图编号
+    view3D.viewMode = 0;
 
     // 初始绘制
     draw3DCrosshair();
