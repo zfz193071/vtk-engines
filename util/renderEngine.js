@@ -338,11 +338,40 @@ class RenderEngine {
     #crossMoveStart = false
     #crossThickStart = false
     #crossRotateStart = false
+    #rotatingTargetAxis = ''
     // 根据捕获器设置十字定位方法
     // 根据 flag 参数的值（start、end 或 move）执行不同的操作
     setCrossFromCatcher (pos, flag) {
         // 当 flag 为 start 时，根据选择的圆形或矩形设置相应的操作开始状态，
         // 并将鼠标样式设置为不可见
+        const findRange = 10;
+
+        if (typeof pos.x === 'number' && typeof pos.y === 'number') {
+            const rect = this.#renderCanvas.getBoundingClientRect();
+            const canvasX = pos.x - rect.left;
+            const canvasY = pos.y - rect.top;
+
+            const canvasCenterX = rect.width / 2;
+            const canvasCenterY = rect.height / 2;
+
+            const offsetX = canvasX - canvasCenterX;
+            const offsetY = canvasY - canvasCenterY;
+
+            const nearX = Math.abs(offsetY) < findRange; // 水平线（横轴）
+            const nearY = Math.abs(offsetX) < findRange; // 垂直线（竖轴）
+
+            if (nearX || nearY) {
+                if (this.#curViewMod === 0) { // T视图 (XY 平面)
+                    this.#rotatingTargetAxis = nearX ? 'C' : 'S';
+                } else if (this.#curViewMod === 1) { // C视图 (XZ 平面)
+                    this.#rotatingTargetAxis = nearX ? 'S' : 'T';
+                } else if (this.#curViewMod === 2) { // S视图 (YZ 平面)
+                    this.#rotatingTargetAxis = nearX ? 'S' : 'C';
+                }
+            }
+        }
+        console.log("this.#rotatingTargetAxis", this.#rotatingTargetAxis)
+
         if (flag === "start") {
             if (this.#circleChoosed) {
                 this.#crossRotateStart = pos
@@ -396,23 +425,35 @@ class RenderEngine {
                 let end = pos
                 let vecA = [start.x - center.x, start.y - center.y]
                 let vecB = [end.x - center.x, end.y - center.y]
-                let radian = this.getAngle(vecA, vecB)  //弧度
-                let angle = Math.round(radian * (180 / Math.PI))//转成角度
-                if (angle != 0) {
+                let radian = this.getAngle(vecA, vecB)
+                let angle = Math.round(radian * (180 / Math.PI))
+
+                if (angle !== 0) {
                     let temp = this.#GPARA
-                    if (this.#curViewMod === 0) {
-                        temp.rotateT = Number(temp.rotateT) + angle
+                    const view = this.#curViewMod
+
+                    if (this.isOrthogonalRotation) {
+                        // ✅ 保持原始正交旋转行为
+                        if (view === 0) temp.rotateT += angle
+                        if (view === 1) temp.rotateC += angle
+                        if (view === 2) temp.rotateS += angle
+                    } else {
+                        // ✅ 非正交旋转：只旋转该视图中你操作的那一条线，另一条线角度不变
+                        if (this.#rotatingTargetAxis === 'T') {
+                            temp.rotateT = Number(temp.rotateT) + angle
+                        } else if (this.#rotatingTargetAxis === 'C') {
+                            temp.rotateC = Number(temp.rotateC) + angle
+                        } else if (this.#rotatingTargetAxis === 'S') {
+                            temp.rotateS = Number(temp.rotateS) + angle
+                        }
                     }
-                    if (this.#curViewMod === 1) {
-                        temp.rotateC = Number(temp.rotateC) + angle
-                    }
-                    if (this.#curViewMod === 2) {
-                        temp.rotateS = Number(temp.rotateS) + angle
-                    }
+
                     this.#crossRotateStart = { ...end }
                     this.#GPARA.value = { ...temp }
                 }
             }
+
+
             if (this.#crossThickStart) {
                 let { imatrix, axes } = this.#crossThickStart
                 let end = this.screenToCanvas(pos, imatrix)  //去除旋转的影响

@@ -52,10 +52,7 @@ const viewports = {
     },
     "sagittal-yz": {
         renderEngine: new RenderEngine(dom3, renderInit, GPARA)
-    },
-    // "3d-view": {
-    //     renderEngine: new RenderEngine(dom3d, renderInit, GPARA),
-    // }
+    }
 }
 
 const viewportsKeys = Object.keys(viewports)
