@@ -70,6 +70,15 @@ class RenderEngine {
     setOrthogonalRotation (enabled) {
         this.isOrthogonalRotation = enabled;
     }
+    getContainer () {
+        return this.#vtkRootDom
+    }
+    getVtkRenderer () {
+        return this.#vtkRenderer
+    }
+    getVtkRendererWindow () {
+        return this.#vtkRenderWindow
+    }
     // 声明一系列私有属性，用于存储各种状态和参数，包括捕获器引擎、渲染画布、渲染上下文、渲染窗口、渲染器
     #catcherEngine = null
     #renderCanvas = null
@@ -368,7 +377,7 @@ class RenderEngine {
             this.#crossMoveStart = false
             this.#crossThickStart = false
             this.#crossRotateStart = false
-            // this.drawCrossOn3d(pos)
+            this.drawCrossOn3d(pos)
             //设置鼠标样式为默认
             this.#catcherEngine.getCatrcherDom().style.cursor = "default"
         }
@@ -923,9 +932,9 @@ class RenderEngine {
             }
         }
         // 遍历线段数组，调用 drawLine 方法绘制所有线段
-        for (let i = 0; i < line.length; i++) {
-            this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle)
-        }
+        // for (let i = 0; i < line.length; i++) {
+        //     this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle)
+        // }
 
         // 定义一个数组，用于存储圆形交互元素的信息
         let circle = []
@@ -955,7 +964,7 @@ class RenderEngine {
                 circle[i].ifFill = true
             }
             // 调用 drawCircle 方法绘制圆形
-            this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
+            // this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
         }
 
         // 定义一个数组，用于存储矩形交互元素的信息
@@ -1020,7 +1029,7 @@ class RenderEngine {
                 rect[i].ifFill = true
             }
             // 调用 drawRect 方法绘制矩形
-            this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
+            // this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
         }
 
         // 恢复之前保存的画布状态，包括变换矩阵、线条样式等
@@ -1065,7 +1074,7 @@ class RenderEngine {
     }
     render3d () {
         this.#vtkRenderWindow.render()
-        // this.drawCrossOn3d()
+        this.drawCrossOn3d()
     }
     getAxes (volumeOrigin, volumeSpacing, crossPosOnImage, rotateAngelGlobal) {
         // 创建一个 4x4 的单位矩阵，用于存储变换后的坐标轴信息

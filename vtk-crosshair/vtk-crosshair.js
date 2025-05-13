@@ -11,7 +11,7 @@ import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import RenderEngine from "../util/renderEngine.js";
 import DataWithInfo from "../util/tDataWithInfo.js";
 import LOCALDATA from "../util/loadLocalData.js";
-const { mat4 } = glMatrix
+const { mat4, vec3 } = glMatrix
 
 // 获取开关元素
 const orthogonalToggle = document.getElementById('ORTHO_MODE');
@@ -45,15 +45,18 @@ const renderInit = {
 }
 const viewports = {
     "transverse-xy": {
+        name: 'axial',
         renderEngine: new RenderEngine(dom1, renderInit, GPARA)
     },
     "coronal-xz": {
+        name: 'coronal',
         renderEngine: new RenderEngine(dom2, renderInit, GPARA)
     },
     "sagittal-yz": {
+        name: 'sagittal',
         renderEngine: new RenderEngine(dom3, renderInit, GPARA)
     }
-}
+};
 
 const viewportsKeys = Object.keys(viewports)
 
@@ -146,8 +149,18 @@ function renderAll_3D () {
         let key = viewportsKeys[i]
         viewports[key].renderEngine.setWWWL(ww, wl)
         viewports[key].renderEngine.setCurrenViewMod(i)
-        // viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
+        viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
         viewports[key].renderEngine.setScale3D(scale, rotateAngelGlobal)
+        const container = viewports[key].renderEngine.getContainer()
+        const renderer = viewports[key].renderEngine.getVtkRenderer()
+        const renderWindow = viewports[key].renderEngine.getVtkRendererWindow()
+        drawCrosshairOnAxial({
+            container,
+            renderer,
+            renderWindow,
+            currentPlane: viewports[key].name,
+            crossSectionState: crossSectionState
+        });
         viewports[key].renderEngine.render3d()
     }
 }
@@ -177,23 +190,6 @@ async function start () {
     render3DView()
     renderAll()
 }
-function render3DVR (actor) {
-    const dom3d = document.getElementById("render_3d");
-    const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
-        rootContainer: dom3d,
-        containerStyle: {
-            height: '100%',
-            width: '100%'
-        },
-        background: [0, 0, 0]
-    })
-    const renderer = fullScreenRenderer.getRenderer()
-    renderer.addVolume(actor)
-    const renderWindow = fullScreenRenderer.getRenderWindow()
-    renderer.resetCamera()
-    renderWindow.render()
-    console.log('3d render finished')
-}
 
 
 // function update3DVolumeTransform (GPARA) {
@@ -204,6 +200,102 @@ function render3DVR (actor) {
 //         Number(GPARA.rotateS) || 0
 //     );
 // }
+
+
+const crossSectionState = {
+    center: [10, 10, 0],
+    planes: {
+        axial: {
+            normal: [0, 0, 1],
+            viewUp: [0, -1, 0],
+            matrix: null
+        },
+        sagittal: {
+            normal: [1, 0, 0],
+            viewUp: [0, 0, 1],
+            matrix: null
+        },
+        coronal: {
+            normal: [0, 1, 0],
+            viewUp: [0, 0, 1],
+            matrix: null
+        }
+    }
+};
+
+function computePlaneIntersectionLine (center, normal) {
+    const direction = normal;
+    const start = [
+        center[0] - direction[0] * 1000,
+        center[1] - direction[1] * 1000,
+        center[2] - direction[2] * 1000
+    ];
+    const end = [
+        center[0] + direction[0] * 1000,
+        center[1] + direction[1] * 1000,
+        center[2] + direction[2] * 1000
+    ];
+    return { start, end };
+}
+
+
+function worldToScreen (worldPos, renderer, renderWindow) {
+    const coord = vtk.Rendering.Core.vtkCoordinate.newInstance();
+    coord.setCoordinateSystemToWorld();
+    coord.setValue(...worldPos);
+
+    const screenPos = coord.getComputedDisplayValue(renderer);
+
+    const [width, height] = renderWindow.getViews()[0].getSize();
+
+    return [screenPos[0], height - screenPos[1]]; // Y翻转，适配Canvas
+}
+
+
+const crosshairCanvasMap = new Map();
+
+function drawCrosshairOnAxial ({ container, renderer, currentPlane, renderWindow, crossSectionState }) {
+    let canvas = crosshairCanvasMap.get(renderer);
+
+    if (!canvas) {
+        canvas = document.createElement('canvas');
+        canvas.style.position = 'absolute';
+        canvas.style.top = 0;
+        canvas.style.left = 0;
+        canvas.style.pointerEvents = 'none';
+        container.appendChild(canvas);
+        crosshairCanvasMap.set(renderer, canvas);
+    }
+
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const { center, planes } = crossSectionState;
+    const planeColors = {
+        axial: '#e50000',
+        sagittal: '#3470d8',
+        coronal: '#cd9700'
+    };
+
+    for (const [type, plane] of Object.entries(planes)) {
+        if (type === currentPlane) continue; // 跳过当前视图的本身
+
+        const { start, end } = computePlaneIntersectionLine(center, plane.normal);
+        const p1 = worldToScreen(start, renderer, renderWindow);
+        const p2 = worldToScreen(end, renderer, renderWindow);
+
+        ctx.beginPath();
+        ctx.moveTo(p1[0], p1[1]);
+        ctx.lineTo(p2[0], p2[1]);
+        ctx.strokeStyle = planeColors[type] || '#00ff00';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+}
+
 
 
 function render3DView () {
