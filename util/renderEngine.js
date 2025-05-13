@@ -212,8 +212,8 @@ class RenderEngine {
         let angle = Math.atan(this.#renderCanvas.height / (2 * (scale / this.#initPixelSpacing) * distance)) * 360 / Math.PI
         camera.setViewAngle(angle)
         // 将世界坐标转换为归一化显示坐标，更新 #crossOn3DScreen 属性
-        let displayCoords = this.#vtkRenderer.worldToNormalizedDisplay(newCenter[0], newCenter[1], newCenter[2], 1)
-        this.#crossOn3DScreen = { x: displayCoords[0] * this.#renderCanvas.width, y: (1 - displayCoords[1]) * this.#renderCanvas.height, z: displayCoords[2], r: rotateAngelGlobal[this.#curViewMod] }
+        // let displayCoords = this.#vtkRenderer.worldToNormalizedDisplay(newCenter[0], newCenter[1], newCenter[2], 1)
+        // this.#crossOn3DScreen = { x: displayCoords[0] * this.#renderCanvas.width, y: (1 - displayCoords[1]) * this.#renderCanvas.height, z: displayCoords[2], r: rotateAngelGlobal[this.#curViewMod] }
     }
     // 设置医学图像窗口宽度（WW, Window Width）和窗口中心（WL, Window Level）的函数，
     // 常用于控制CT/MRI 图像的对比度和亮度
@@ -344,34 +344,6 @@ class RenderEngine {
     setCrossFromCatcher (pos, flag) {
         // 当 flag 为 start 时，根据选择的圆形或矩形设置相应的操作开始状态，
         // 并将鼠标样式设置为不可见
-        const findRange = 10;
-
-        if (typeof pos.x === 'number' && typeof pos.y === 'number') {
-            const rect = this.#renderCanvas.getBoundingClientRect();
-            const canvasX = pos.x - rect.left;
-            const canvasY = pos.y - rect.top;
-
-            const canvasCenterX = rect.width / 2;
-            const canvasCenterY = rect.height / 2;
-
-            const offsetX = canvasX - canvasCenterX;
-            const offsetY = canvasY - canvasCenterY;
-
-            const nearX = Math.abs(offsetY) < findRange; // 水平线（横轴）
-            const nearY = Math.abs(offsetX) < findRange; // 垂直线（竖轴）
-
-            if (nearX || nearY) {
-                if (this.#curViewMod === 0) { // T视图 (XY 平面)
-                    this.#rotatingTargetAxis = nearX ? 'C' : 'S';
-                } else if (this.#curViewMod === 1) { // C视图 (XZ 平面)
-                    this.#rotatingTargetAxis = nearX ? 'S' : 'T';
-                } else if (this.#curViewMod === 2) { // S视图 (YZ 平面)
-                    this.#rotatingTargetAxis = nearX ? 'S' : 'C';
-                }
-            }
-        }
-        console.log("this.#rotatingTargetAxis", this.#rotatingTargetAxis)
-
         if (flag === "start") {
             if (this.#circleChoosed) {
                 this.#crossRotateStart = pos
@@ -396,7 +368,7 @@ class RenderEngine {
             this.#crossMoveStart = false
             this.#crossThickStart = false
             this.#crossRotateStart = false
-            this.drawCrossOn3d(pos)
+            // this.drawCrossOn3d(pos)
             //设置鼠标样式为默认
             this.#catcherEngine.getCatrcherDom().style.cursor = "default"
         }
@@ -432,21 +404,9 @@ class RenderEngine {
                     let temp = this.#GPARA
                     const view = this.#curViewMod
 
-                    if (this.isOrthogonalRotation) {
-                        // ✅ 保持原始正交旋转行为
-                        if (view === 0) temp.rotateT += angle
-                        if (view === 1) temp.rotateC += angle
-                        if (view === 2) temp.rotateS += angle
-                    } else {
-                        // ✅ 非正交旋转：只旋转该视图中你操作的那一条线，另一条线角度不变
-                        if (this.#rotatingTargetAxis === 'T') {
-                            temp.rotateT = Number(temp.rotateT) + angle
-                        } else if (this.#rotatingTargetAxis === 'C') {
-                            temp.rotateC = Number(temp.rotateC) + angle
-                        } else if (this.#rotatingTargetAxis === 'S') {
-                            temp.rotateS = Number(temp.rotateS) + angle
-                        }
-                    }
+                    if (view === 0) temp.rotateT += angle
+                    if (view === 1) temp.rotateC += angle
+                    if (view === 2) temp.rotateS += angle
 
                     this.#crossRotateStart = { ...end }
                     this.#GPARA.value = { ...temp }
@@ -654,7 +614,7 @@ class RenderEngine {
         // 在画布上绘制图像，并应用缩放、旋转和平移变换
         this.ctxDrawImage(this.#renderContext, this.#imgCanvas, scale, rotate, translate, this.#renderCanvas.width, this.#renderCanvas.height)
         // 在画布上绘制十字定位线
-        this.drawCross(this.#renderContext)
+        // this.drawCross(this.#renderContext)
     }
     // 该函数用于在画布上绘制图像，支持调窗后的缩放，
     // 绘制过程包括保存画布状态、缩放、平移、旋转等变换操作，
@@ -1105,7 +1065,7 @@ class RenderEngine {
     }
     render3d () {
         this.#vtkRenderWindow.render()
-        this.drawCrossOn3d()
+        // this.drawCrossOn3d()
     }
     getAxes (volumeOrigin, volumeSpacing, crossPosOnImage, rotateAngelGlobal) {
         // 创建一个 4x4 的单位矩阵，用于存储变换后的坐标轴信息

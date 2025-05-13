@@ -146,7 +146,7 @@ function renderAll_3D () {
         let key = viewportsKeys[i]
         viewports[key].renderEngine.setWWWL(ww, wl)
         viewports[key].renderEngine.setCurrenViewMod(i)
-        viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
+        // viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
         viewports[key].renderEngine.setScale3D(scale, rotateAngelGlobal)
         viewports[key].renderEngine.render3d()
     }
@@ -267,117 +267,9 @@ function render3DView () {
     renderer.resetCameraClippingRange();
     renderWindow.render();
 
-    // 添加 Canvas 层绘制十字线
-    const canvas = document.createElement("canvas");
-    canvas.width = dom3d.clientWidth;
-    canvas.height = dom3d.clientHeight;
-    canvas.style.position = "absolute";
-    canvas.style.left = "0";
-    canvas.style.top = "0";
-    canvas.style.pointerEvents = "none";
-    canvas.style.zIndex = 999;
-    dom3d.appendChild(canvas);
-    const ctx = canvas.getContext("2d");
 
-    function draw3DCrosshair () {
-        const isOrthogonalRotation = orthogonalToggle.checked
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const [pageS, pageC, pageT] = [
-            Number(GPARA.pageS),
-            Number(GPARA.pageC),
-            Number(GPARA.pageT),
-        ];
-        const [rotateT, rotateC, rotateS] = [
-            Number(GPARA.rotateT),
-            Number(GPARA.rotateC),
-            Number(GPARA.rotateS),
-        ];
-
-        const volume = viewports["transverse-xy"].renderEngine.getVolume();
-        const origin = volume.getOrigin();
-        const spacing = volume.getSpacing();
-
-        const worldPos = [
-            origin[0] + pageS * spacing[0],
-            origin[1] + pageC * spacing[1],
-            origin[2] + pageT * spacing[2],
-        ];
-
-        const displayCoords = renderer.worldToNormalizedDisplay(...worldPos, 1);
-        const x = displayCoords[0] * canvas.width;
-        const y = (1 - displayCoords[1]) * canvas.height;
-
-        // 当前视图模式下的旋转角度（单位：弧度）
-        const rotate = [rotateT, rotateC, rotateS];
-        const r = rotate[view3D.viewMode] * Math.PI / 180;
-
-        // 线长设置：全屏长度
-        const lineLength = Math.max(canvas.width, canvas.height);
-
-        ctx.save();
-        ctx.translate(x, y);
-
-        if (isOrthogonalRotation) {
-            // 正交旋转：整体旋转十字
-            ctx.rotate(r);
-            ctx.lineWidth = 2;
-
-            // 绘制 X 轴（横线）
-            ctx.strokeStyle = "#8a00da";
-            ctx.beginPath();
-            ctx.moveTo(-lineLength, 0);
-            ctx.lineTo(lineLength, 0);
-            ctx.stroke();
-
-            // 绘制 Y 轴（竖线）
-            ctx.strokeStyle = "#cd9700";
-            ctx.beginPath();
-            ctx.moveTo(0, -lineLength);
-            ctx.lineTo(0, lineLength);
-            ctx.stroke();
-        } else {
-            // 非正交旋转：分别旋转两条线
-
-            // 横向线（X轴）旋转
-            ctx.save();
-            let rx = view3D.viewMode === 0 ? rotateT : view3D.viewMode === 1 ? rotateC : rotateS;
-            ctx.rotate((rx * Math.PI) / 180);
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#8a00da";
-            ctx.beginPath();
-            ctx.moveTo(-lineLength, 0);
-            ctx.lineTo(lineLength, 0);
-            ctx.stroke();
-            ctx.restore();
-
-            // 纵向线（Y轴）不旋转或按另一个轴旋转
-            ctx.save();
-            let ry = 0; // 默认不转
-            if (view3D.viewMode === 0) ry = rotateC;
-            if (view3D.viewMode === 1) ry = rotateS;
-            if (view3D.viewMode === 2) ry = rotateC;
-            ctx.rotate((ry * Math.PI) / 180);
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#cd9700";
-            ctx.beginPath();
-            ctx.moveTo(0, -lineLength);
-            ctx.lineTo(0, lineLength);
-            ctx.stroke();
-            ctx.restore();
-        }
-
-        ctx.restore();
-    }
-
-
-
-    // 挂钩到 view3D
-    view3D.draw3DCrosshair = draw3DCrosshair;
     view3D.viewMode = 0;
 
-    // 初始绘制
-    draw3DCrosshair();
 }
 
 
