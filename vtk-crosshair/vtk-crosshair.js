@@ -11,7 +11,7 @@ import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import RenderEngine from "../util/renderEngine.js";
 import DataWithInfo from "../util/tDataWithInfo.js";
 import LOCALDATA from "../util/loadLocalData.js";
-const { mat4, vec3 } = glMatrix
+const { mat4 } = glMatrix
 
 // 获取开关元素
 const orthogonalToggle = document.getElementById('ORTHO_MODE');
@@ -45,18 +45,18 @@ const renderInit = {
 }
 const viewports = {
     "transverse-xy": {
-        name: 'axial',
         renderEngine: new RenderEngine(dom1, renderInit, GPARA)
     },
     "coronal-xz": {
-        name: 'coronal',
         renderEngine: new RenderEngine(dom2, renderInit, GPARA)
     },
     "sagittal-yz": {
-        name: 'sagittal',
         renderEngine: new RenderEngine(dom3, renderInit, GPARA)
-    }
-};
+    },
+    // "3d-view": {
+    //     renderEngine: new RenderEngine(dom3d, renderInit, GPARA),
+    // }
+}
 
 const viewportsKeys = Object.keys(viewports)
 
@@ -108,10 +108,10 @@ Object.defineProperty(GPARA, 'value', {
                 dom.value = newValue[ikey]
             }
         })
-        // if (view3D.draw3DCrosshair) {
-        //     view3D.draw3DCrosshair();
-        //     view3D.renderWindow.render();
-        // }
+        if (view3D.draw3DCrosshair) {
+            view3D.draw3DCrosshair();
+            view3D.renderWindow.render();
+        }
         // update3DVolumeTransform(newValue)
         renderAll()
     }
@@ -151,18 +151,6 @@ function renderAll_3D () {
         viewports[key].renderEngine.setCurrenViewMod(i)
         viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
         viewports[key].renderEngine.setScale3D(scale, rotateAngelGlobal)
-        const container = viewports[key].renderEngine.getContainer()
-        const renderer = viewports[key].renderEngine.getVtkRenderer()
-        const renderWindow = viewports[key].renderEngine.getVtkRendererWindow()
-        const newAxes = viewports[key].renderEngine.getNewAxes()
-        crossSectionState.center = newAxes.newCenter
-        drawCrosshairOnAxial({
-            container,
-            renderer,
-            renderWindow,
-            currentPlane: viewports[key].name,
-            crossSectionState
-        });
         viewports[key].renderEngine.render3d()
     }
 }
@@ -192,6 +180,23 @@ async function start () {
     render3DView()
     renderAll()
 }
+function render3DVR (actor) {
+    const dom3d = document.getElementById("render_3d");
+    const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
+        rootContainer: dom3d,
+        containerStyle: {
+            height: '100%',
+            width: '100%'
+        },
+        background: [0, 0, 0]
+    })
+    const renderer = fullScreenRenderer.getRenderer()
+    renderer.addVolume(actor)
+    const renderWindow = fullScreenRenderer.getRenderWindow()
+    renderer.resetCamera()
+    renderWindow.render()
+    console.log('3d render finished')
+}
 
 
 // function update3DVolumeTransform (GPARA) {
@@ -203,105 +208,9 @@ async function start () {
 //     );
 // }
 
-
-const crossSectionState = {
-    center: [10, 10, 0],
-    planes: {
-        axial: {
-            normal: [0, 0, 1],
-            viewUp: [0, -1, 0],
-            matrix: null
-        },
-        sagittal: {
-            normal: [1, 0, 0],
-            viewUp: [0, 0, 1],
-            matrix: null
-        },
-        coronal: {
-            normal: [0, 1, 0],
-            viewUp: [0, 0, 1],
-            matrix: null
-        }
-    }
-};
-
-function computePlaneIntersectionLine (center, normal) {
-    const direction = normal;
-    const start = [
-        center[0] - direction[0] * 1000,
-        center[1] - direction[1] * 1000,
-        center[2] - direction[2] * 1000
-    ];
-    const end = [
-        center[0] + direction[0] * 1000,
-        center[1] + direction[1] * 1000,
-        center[2] + direction[2] * 1000
-    ];
-    return { start, end };
-}
-
-
-function worldToScreen (worldPos, renderer, renderWindow) {
-    const coord = vtk.Rendering.Core.vtkCoordinate.newInstance();
-    coord.setCoordinateSystemToWorld();
-    coord.setValue(...worldPos);
-
-    const screenPos = coord.getComputedDisplayValue(renderer);
-
-    const [width, height] = renderWindow.getViews()[0].getSize();
-    const result = [screenPos[0], height - screenPos[1]];
-
-    return result; // Y翻转，适配Canvas
-}
-
-
-const crosshairCanvasMap = new Map();
-
-function drawCrosshairOnAxial ({ container, renderer, currentPlane, renderWindow, crossSectionState }) {
-    let canvas = crosshairCanvasMap.get(renderer);
-
-    if (!canvas) {
-        canvas = document.createElement('canvas');
-        canvas.style.position = 'absolute';
-        canvas.style.top = 0;
-        canvas.style.left = 0;
-        canvas.style.pointerEvents = 'none';
-        container.appendChild(canvas);
-        crosshairCanvasMap.set(renderer, canvas);
-    }
-
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
-
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    const { center, planes } = crossSectionState;
-    const planeColors = {
-        axial: '#e50000',
-        sagittal: '#3470d8',
-        coronal: '#cd9700'
-    };
-
-    for (const [type, plane] of Object.entries(planes)) {
-        if (type === currentPlane) continue; // 跳过当前视图的本身
-
-        const { start, end } = computePlaneIntersectionLine(center, plane.normal);
-        const p1 = worldToScreen(start, renderer, renderWindow);
-        const p2 = worldToScreen(end, renderer, renderWindow);
-        ctx.save()
-        if (p1 && p2) {
-            ctx.beginPath();
-            ctx.moveTo(p1[0], p1[1]);
-            ctx.lineTo(p2[0], p2[1]);
-            ctx.strokeStyle = planeColors[type] || '#ff0000';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-        }
-        ctx.restore()
-    }
-}
-
+// 状态缓存（全局）
+let crossAngleDiff = Math.PI / 2; // 默认夹角
+let controlledAxis = 'x'; // 初始控制的是x轴线（横线）
 
 
 function render3DView () {
@@ -365,9 +274,111 @@ function render3DView () {
     renderer.resetCameraClippingRange();
     renderWindow.render();
 
+    // 添加 Canvas 层绘制十字线
+    const canvas = document.createElement("canvas");
+    canvas.width = dom3d.clientWidth;
+    canvas.height = dom3d.clientHeight;
+    canvas.style.position = "absolute";
+    canvas.style.left = "0";
+    canvas.style.top = "0";
+    canvas.style.pointerEvents = "none";
+    canvas.style.zIndex = 999;
+    dom3d.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
 
+    function draw3DCrosshair () {
+        const isOrthogonalRotation = orthogonalToggle.checked;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const [pageS, pageC, pageT] = [Number(GPARA.pageS), Number(GPARA.pageC), Number(GPARA.pageT)];
+        const [rotateT, rotateC, rotateS] = [Number(GPARA.rotateT), Number(GPARA.rotateC), Number(GPARA.rotateS)];
+
+        const volume = viewports["transverse-xy"].renderEngine.getVolume();
+        const origin = volume.getOrigin();
+        const spacing = volume.getSpacing();
+
+        const worldPos = [
+            origin[0] + pageS * spacing[0],
+            origin[1] + pageC * spacing[1],
+            origin[2] + pageT * spacing[2],
+        ];
+
+        const displayCoords = renderer.worldToNormalizedDisplay(...worldPos, 1);
+        const x = displayCoords[0] * canvas.width;
+        const y = (1 - displayCoords[1]) * canvas.height;
+        const lineLength = Math.max(canvas.width, canvas.height);
+
+        // 获取当前两条线角度（单位：弧度）
+        let rx = 0, ry = 0;
+        switch (view3D.viewMode) {
+            case 0: rx = rotateT * Math.PI / 180; ry = rotateC * Math.PI / 180; break;
+            case 1: rx = rotateC * Math.PI / 180; ry = rotateS * Math.PI / 180; break;
+            case 2: rx = rotateS * Math.PI / 180; ry = rotateC * Math.PI / 180; break;
+        }
+
+        if (!isOrthogonalRotation) {
+            // 普通状态，记录当前角度差
+            crossAngleDiff = ry - rx;
+
+            // 记录谁在动（谁是你在控制的轴）
+            // 这里简单判断：哪个角度发生变化就记录谁，建议在 UI 中标明控制轴更合理
+            controlledAxis = Math.abs(ry - (crossAngleDiff + rx)) < 0.001 ? 'x' : 'y';
+        }
+
+        // 计算最终两条线角度
+        let xAngle, yAngle;
+
+        if (isOrthogonalRotation) {
+            if (controlledAxis === 'x') {
+                xAngle = rx;
+                yAngle = xAngle + crossAngleDiff;
+            } else {
+                yAngle = ry;
+                xAngle = yAngle - crossAngleDiff;
+            }
+        } else {
+            xAngle = rx;
+            yAngle = ry;
+        }
+
+        // 绘制两条线
+        ctx.save();
+        ctx.translate(x, y);
+
+        // 横线
+        ctx.save();
+        ctx.rotate(xAngle);
+        ctx.strokeStyle = "#8a00da";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-lineLength, 0);
+        ctx.lineTo(lineLength, 0);
+        ctx.stroke();
+        ctx.restore();
+
+        // 纵线
+        ctx.save();
+        ctx.rotate(yAngle);
+        ctx.strokeStyle = "#cd9700";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -lineLength);
+        ctx.lineTo(0, lineLength);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.restore();
+    }
+
+
+
+
+    // 挂钩到 view3D
+    view3D.draw3DCrosshair = draw3DCrosshair;
     view3D.viewMode = 0;
 
+    // 初始绘制
+    draw3DCrosshair();
 }
 
 

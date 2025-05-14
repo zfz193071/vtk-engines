@@ -70,15 +70,6 @@ class RenderEngine {
     setOrthogonalRotation (enabled) {
         this.isOrthogonalRotation = enabled;
     }
-    getContainer () {
-        return this.#vtkRootDom
-    }
-    getVtkRenderer () {
-        return this.#vtkRenderer
-    }
-    getVtkRendererWindow () {
-        return this.#vtkRenderWindow
-    }
     // 声明一系列私有属性，用于存储各种状态和参数，包括捕获器引擎、渲染画布、渲染上下文、渲染窗口、渲染器
     #catcherEngine = null
     #renderCanvas = null
@@ -221,8 +212,8 @@ class RenderEngine {
         let angle = Math.atan(this.#renderCanvas.height / (2 * (scale / this.#initPixelSpacing) * distance)) * 360 / Math.PI
         camera.setViewAngle(angle)
         // 将世界坐标转换为归一化显示坐标，更新 #crossOn3DScreen 属性
-        // let displayCoords = this.#vtkRenderer.worldToNormalizedDisplay(newCenter[0], newCenter[1], newCenter[2], 1)
-        // this.#crossOn3DScreen = { x: displayCoords[0] * this.#renderCanvas.width, y: (1 - displayCoords[1]) * this.#renderCanvas.height, z: displayCoords[2], r: rotateAngelGlobal[this.#curViewMod] }
+        let displayCoords = this.#vtkRenderer.worldToNormalizedDisplay(newCenter[0], newCenter[1], newCenter[2], 1)
+        this.#crossOn3DScreen = { x: displayCoords[0] * this.#renderCanvas.width, y: (1 - displayCoords[1]) * this.#renderCanvas.height, z: displayCoords[2], r: rotateAngelGlobal[this.#curViewMod] }
     }
     // 设置医学图像窗口宽度（WW, Window Width）和窗口中心（WL, Window Level）的函数，
     // 常用于控制CT/MRI 图像的对比度和亮度
@@ -250,9 +241,6 @@ class RenderEngine {
     }
     getActor () {
         return this.#vtkSource.Actor
-    }
-    getNewAxes () {
-        return this.#newaxes;
     }
     // 设置页面方法（旧版）
     // 根据当前视图模式计算裁剪平面的法线和原点，并设置裁剪平面的属性
@@ -350,7 +338,6 @@ class RenderEngine {
     #crossMoveStart = false
     #crossThickStart = false
     #crossRotateStart = false
-    #rotatingTargetAxis = ''
     // 根据捕获器设置十字定位方法
     // 根据 flag 参数的值（start、end 或 move）执行不同的操作
     setCrossFromCatcher (pos, flag) {
@@ -409,23 +396,23 @@ class RenderEngine {
                 let end = pos
                 let vecA = [start.x - center.x, start.y - center.y]
                 let vecB = [end.x - center.x, end.y - center.y]
-                let radian = this.getAngle(vecA, vecB)
-                let angle = Math.round(radian * (180 / Math.PI))
-
-                if (angle !== 0) {
+                let radian = this.getAngle(vecA, vecB)  //弧度
+                let angle = Math.round(radian * (180 / Math.PI))//转成角度
+                if (angle != 0) {
                     let temp = this.#GPARA
-                    const view = this.#curViewMod
-
-                    if (view === 0) temp.rotateT += angle
-                    if (view === 1) temp.rotateC += angle
-                    if (view === 2) temp.rotateS += angle
-
+                    if (this.#curViewMod === 0) {
+                        temp.rotateT = Number(temp.rotateT) + angle
+                    }
+                    if (this.#curViewMod === 1) {
+                        temp.rotateC = Number(temp.rotateC) + angle
+                    }
+                    if (this.#curViewMod === 2) {
+                        temp.rotateS = Number(temp.rotateS) + angle
+                    }
                     this.#crossRotateStart = { ...end }
                     this.#GPARA.value = { ...temp }
                 }
             }
-
-
             if (this.#crossThickStart) {
                 let { imatrix, axes } = this.#crossThickStart
                 let end = this.screenToCanvas(pos, imatrix)  //去除旋转的影响
@@ -626,7 +613,7 @@ class RenderEngine {
         // 在画布上绘制图像，并应用缩放、旋转和平移变换
         this.ctxDrawImage(this.#renderContext, this.#imgCanvas, scale, rotate, translate, this.#renderCanvas.width, this.#renderCanvas.height)
         // 在画布上绘制十字定位线
-        // this.drawCross(this.#renderContext)
+        this.drawCross(this.#renderContext)
     }
     // 该函数用于在画布上绘制图像，支持调窗后的缩放，
     // 绘制过程包括保存画布状态、缩放、平移、旋转等变换操作，
@@ -935,9 +922,9 @@ class RenderEngine {
             }
         }
         // 遍历线段数组，调用 drawLine 方法绘制所有线段
-        // for (let i = 0; i < line.length; i++) {
-        //     this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle)
-        // }
+        for (let i = 0; i < line.length; i++) {
+            this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle)
+        }
 
         // 定义一个数组，用于存储圆形交互元素的信息
         let circle = []
@@ -967,7 +954,7 @@ class RenderEngine {
                 circle[i].ifFill = true
             }
             // 调用 drawCircle 方法绘制圆形
-            // this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
+            this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
         }
 
         // 定义一个数组，用于存储矩形交互元素的信息
@@ -1032,7 +1019,7 @@ class RenderEngine {
                 rect[i].ifFill = true
             }
             // 调用 drawRect 方法绘制矩形
-            // this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
+            this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
         }
 
         // 恢复之前保存的画布状态，包括变换矩阵、线条样式等
