@@ -213,7 +213,14 @@ class RenderEngine {
         camera.setViewAngle(angle)
         // 将世界坐标转换为归一化显示坐标，更新 #crossOn3DScreen 属性
         let displayCoords = this.#vtkRenderer.worldToNormalizedDisplay(newCenter[0], newCenter[1], newCenter[2], 1)
-        this.#crossOn3DScreen = { x: displayCoords[0] * this.#renderCanvas.width, y: (1 - displayCoords[1]) * this.#renderCanvas.height, z: displayCoords[2], r: rotateAngelGlobal[this.#curViewMod] }
+        this.#crossOn3DScreen = {
+            x: displayCoords[0] * this.#renderCanvas.width,
+            y: (1 - displayCoords[1]) * this.#renderCanvas.height,
+            z: displayCoords[2],
+            r: rotateAngelGlobal[this.#curViewMod],
+            xAngle: rotateAngelGlobal[this.#curViewMod],
+            yAngle: rotateAngelGlobal[this.#curViewMod]
+        }
     }
     // 设置医学图像窗口宽度（WW, Window Width）和窗口中心（WL, Window Level）的函数，
     // 常用于控制CT/MRI 图像的对比度和亮度
@@ -334,6 +341,13 @@ class RenderEngine {
         this.#clipPlane2.setNormal(clipPlaneNormal2);
         this.#clipPlane2.setOrigin(clipPlaneOrigin2);
     }
+    getAngleBetween (vecA, vecB) {
+        const dot = vecA[0] * vecB[0] + vecA[1] * vecB[1];
+        const magA = Math.sqrt(vecA[0] * vecA[0] + vecA[1] * vecA[1]);
+        const magB = Math.sqrt(vecB[0] * vecB[0] + vecB[1] * vecB[1]);
+        return Math.acos(dot / (magA * magB));
+    }
+
     // 声明三个私有变量，用于记录十字定位的移动、厚度调整和旋转操作的开始状态
     #crossMoveStart = false
     #crossThickStart = false
@@ -399,6 +413,27 @@ class RenderEngine {
                 let radian = this.getAngle(vecA, vecB)  //弧度
                 let angle = Math.round(radian * (180 / Math.PI))//转成角度
                 if (angle != 0) {
+
+                    const cross = this.#crossOn3DScreen;
+                    const crossAngleDiff = cross.yAngle - cross.xAngle;
+
+                    if (!this.isOrthogonalRotation) {
+                        // 非正交，判断旋转靠近哪一条线
+                        const angleToX = Math.abs(this.getAngleBetween(vecB, [Math.cos(cross.xAngle), Math.sin(cross.xAngle)]));
+                        const angleToY = Math.abs(this.getAngleBetween(vecB, [Math.cos(cross.yAngle), Math.sin(cross.yAngle)]));
+                        const rad = radian;
+
+                        if (angleToX < angleToY) {
+                            cross.xAngle += rad;
+                        } else {
+                            cross.yAngle += rad;
+                        }
+                    } else {
+                        // 正交旋转，整体旋转并保持夹角不变
+                        cross.xAngle += radian;
+                        cross.yAngle = cross.xAngle + crossAngleDiff;
+                    }
+                    console.log('before this.#crossOn3DScreen', this.#crossOn3DScreen.xAngle, this.#crossOn3DScreen.yAngle)
                     let temp = this.#GPARA
                     if (this.#curViewMod === 0) {
                         temp.rotateT = Number(temp.rotateT) + angle
@@ -409,8 +444,10 @@ class RenderEngine {
                     if (this.#curViewMod === 2) {
                         temp.rotateS = Number(temp.rotateS) + angle
                     }
-                    this.#crossRotateStart = { ...end }
+
                     this.#GPARA.value = { ...temp }
+                    this.#crossRotateStart = { ...end }
+
                 }
             }
             if (this.#crossThickStart) {
@@ -749,12 +786,12 @@ class RenderEngine {
         let ctx = this.#renderCanvas3D.getContext("2d")
         // 清除3D渲染画布上之前绘制的所有内容，准备重新绘制
         ctx.clearRect(0, 0, this.#renderCanvas3D.width, this.#renderCanvas3D.height)
-        // 保存当前画布的状态，包括当前的变换矩阵、线条样式等，以便后续恢复
-        ctx.save();
-        // 将画布的原点平移到3D屏幕上十字中心点的位置，方便后续以该点为基准进行绘制
-        ctx.translate(this.#crossOn3DScreen.x, this.#crossOn3DScreen.y);
+        const { xAngle = 0, yAngle = 0 } = this.#crossOn3DScreen
+
+        ctx.save()
+        ctx.translate(this.#crossOn3DScreen.x, this.#crossOn3DScreen.y)
         // 将画布绕原点旋转指定的角度，使得后续绘制的内容与十字的旋转状态一致
-        ctx.rotate(this.#crossOn3DScreen.r);
+        // ctx.rotate(this.#crossOn3DScreen.r);
 
         // 定义一些常量，用于控制绘制元素的尺寸和交互范围
         let Dis = 60, rForCircle = 5, rForRect = 4, findRange = 10
@@ -808,7 +845,11 @@ class RenderEngine {
         // 检查传入的屏幕坐标是否有效
         if (screenPos.x && screenPos.y) {
             // 如果有效，将屏幕坐标转换为画布坐标
-            canvasPos = this.screenToCanvas(screenPos, imatrix)
+            canvasPos = {
+                x: screenPos.x - this.#crossOn3DScreen.x,
+                y: screenPos.y - this.#crossOn3DScreen.y
+            }
+
             // 解构出画布坐标的x和y值
             let { x, y } = canvasPos
             // 检查画布坐标是否有效
@@ -852,177 +893,182 @@ class RenderEngine {
         // 从当前视图模式对应的配置对象中解构出十字线的颜色、虚线样式和粗线样式
         let { colorX, colorY, dottedLine1, dottedLine2, thickLine } = this.#positionLine["curViewMod" + this.#curViewMod]
 
-        // 定义一个数组，用于存储十字线的线段信息
-        let line = [
-            {
-                // X轴负方向的线段，颜色为 colorX，虚线样式为 dottedLine1
-                strokeStyle: colorX,
-                c: { x1: -l, y1: 0, x2: -CD, y2: 0 },
-                dottSytle: dottedLine1
-            },
-            {
-                // X轴正方向的线段，颜色为 colorX，虚线样式为 dottedLine1
-                strokeStyle: colorX,
-                c: { x1: CD, y1: 0, x2: l, y2: 0 },
-                dottSytle: dottedLine1
-            },
-            {
-                // Y轴负方向的线段，颜色为 colorY，虚线样式为 dottedLine2
-                strokeStyle: colorY,
-                c: { x1: 0, y1: -l, x2: 0, y2: -CD },
-                dottSytle: dottedLine2
-            },
-            {
-                // Y轴正方向的线段，颜色为 colorY，虚线样式为 dottedLine2
-                strokeStyle: colorY,
-                c: { x1: 0, y1: CD, x2: 0, y2: l },
-                dottSytle: dottedLine2
-            }
-        ]
-        // 如果X方向的厚度大于1像素，则需要添加表示厚度的粗线段
+        // --- 横向线（X轴） ---
+        ctx.save()
+        ctx.rotate(xAngle)
+        for (let segment of [
+            { x1: -l, y1: 0, x2: -CD, y2: 0 },
+            { x1: CD, y1: 0, x2: l, y2: 0 }
+        ]) {
+            this.drawLine(ctx, segment, dottedLine1, colorX)
+        }
         if (thicknessX > 1) {
-            // 遍历X轴的两条主线段
-            for (let i = 0; i < 2; i++) {
-                // 复制主线段的信息
-                let ele1 = JSON.parse(JSON.stringify(line[i]))
-                // 将虚线样式改为粗线样式
-                ele1.dottSytle = thickLine
-                // 将线段的Y坐标设置为负的厚度值
-                ele1.c.y1 = -thicknessX
-                ele1.c.y2 = -thicknessX
-                // 将新线段添加到线段数组中
-                line.push(ele1)
-                // 复制另一条线段，将Y坐标设置为正的厚度值
-                let ele2 = JSON.parse(JSON.stringify(ele1))
-                ele2.c.y1 = thicknessX
-                ele2.c.y2 = thicknessX
-                // 将新线段添加到线段数组中
-                line.push(ele2)
+            for (let offset of [-thicknessX, thicknessX]) {
+                for (let segment of [
+                    { x1: -l, y1: offset, x2: -CD, y2: offset },
+                    { x1: CD, y1: offset, x2: l, y2: offset }
+                ]) {
+                    this.drawLine(ctx, segment, thickLine, colorX)
+                }
             }
         }
-        // 如果Y方向的厚度大于1像素，则需要添加表示厚度的粗线段
-        if (thicknessY > 1) {
-            // 遍历Y轴的两条主线段
-            for (let i = 2; i < 4; i++) {
-                // 复制主线段的信息
-                let ele1 = JSON.parse(JSON.stringify(line[i]))
-                // 将虚线样式改为粗线样式
-                ele1.dottSytle = thickLine
-                // 将线段的X坐标设置为负的厚度值
-                ele1.c.x1 = -thicknessY
-                ele1.c.x2 = -thicknessY
-                // 将新线段添加到线段数组中
-                line.push(ele1)
-                // 复制另一条线段，将X坐标设置为正的厚度值
-                let ele2 = JSON.parse(JSON.stringify(ele1))
-                ele2.c.x1 = thicknessY
-                ele2.c.x2 = thicknessY
-                // 将新线段添加到线段数组中
-                line.push(ele2)
-            }
-        }
-        // 遍历线段数组，调用 drawLine 方法绘制所有线段
-        for (let i = 0; i < line.length; i++) {
-            this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle)
-        }
+        ctx.restore()
 
-        // 定义一个数组，用于存储圆形交互元素的信息
+        // 纵向线（Y轴）
+        ctx.save()
+        ctx.rotate(yAngle)
+        for (let segment of [
+            { x1: 0, y1: -l, x2: 0, y2: -CD },
+            { x1: 0, y1: CD, x2: 0, y2: l }
+        ]) {
+            this.drawLine(ctx, segment, dottedLine2, colorY)
+        }
+        if (thicknessY > 1) {
+            for (let offset of [-thicknessY, thicknessY]) {
+                for (let segment of [
+                    { x1: offset, y1: -l, x2: offset, y2: -CD },
+                    { x1: offset, y1: CD, x2: offset, y2: l }
+                ]) {
+                    this.drawLine(ctx, segment, thickLine, colorY)
+                }
+            }
+        }
+        ctx.restore()
+
         let circle = []
-        // 如果需要显示圆形交互元素
+        this.#circleChoosed = null
+
         if (flag.circleShow) {
-            // 初始化四个圆形交互元素的信息
             circle[0] = { c: { x: -circleDis, y: 0, r: rForCircle }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
             circle[1] = { c: { x: circleDis, y: 0, r: rForCircle }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
             circle[2] = { c: { x: 0, y: -circleDis, r: rForCircle }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
             circle[3] = { c: { x: 0, y: circleDis, r: rForCircle }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
-        }
-        // 重置选择的圆形交互元素为 null
-        this.#circleChoosed = null
-        // 遍历圆形数组
-        for (let i = 0; i < circle.length; i++) {
-            // 解构出画布坐标的x和y值
-            let { x, y } = canvasPos
-            // 判断鼠标是否在圆形附近，使用欧几里得距离进行判断
-            if (x && y && Math.pow(circle[i].c.x - x, 2) + Math.pow(circle[i].c.y - y, 2) <= Math.pow(findRange, 2)) {
-                // 如果在附近，则将圆形设置为填充状态
-                circle[i].ifFill = true
-                // 将选中的圆形坐标转换为屏幕坐标
-                this.#circleChoosed = this.canvseToScreen(circle[i].c, imatrix)
+
+            // 绘制X方向的圆
+            ctx.save()
+            ctx.rotate(xAngle)
+            for (let i of [0, 1]) {
+                const { x: cx, y: cy, r } = circle[i].c
+
+                // 计算旋转后的圆心位置
+                const rotated = {
+                    x: cx * Math.cos(xAngle) - cy * Math.sin(xAngle),
+                    y: cx * Math.sin(xAngle) + cy * Math.cos(xAngle),
+                }
+
+                // 用变换后的坐标来判断点击
+                let { x: mx, y: my } = canvasPos
+                if (mx != null && my != null &&
+                    Math.pow(rotated.x - mx, 2) + Math.pow(rotated.y - my, 2) <= Math.pow(findRange, 2)) {
+                    circle[i].ifFill = true
+                    this.#circleChoosed = this.canvseToScreen(rotated, imatrix)
+                }
+
+                if (this.#crossRotateStart) {
+                    circle[i].ifFill = true
+                }
+
+                // 绘制仍然用原坐标（ctx 已旋转）
+                this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
             }
-            // 如果正在进行十字旋转操作，则将所有圆形设置为填充状态
-            if (this.#crossRotateStart) {
-                circle[i].ifFill = true
+            ctx.restore()
+
+            // 绘制Y方向的圆
+            ctx.save()
+            ctx.rotate(yAngle)
+            for (let i of [2, 3]) {
+                const { x: cx, y: cy, r } = circle[i].c
+
+                // 计算旋转后的圆心位置
+                const rotated = {
+                    x: cx * Math.cos(yAngle) - cy * Math.sin(yAngle),
+                    y: cx * Math.sin(yAngle) + cy * Math.cos(yAngle),
+                }
+
+                // 用变换后的坐标来判断点击
+                let { x: mx, y: my } = canvasPos
+                if (mx != null && my != null &&
+                    Math.pow(rotated.x - mx, 2) + Math.pow(rotated.y - my, 2) <= Math.pow(findRange, 2)) {
+                    circle[i].ifFill = true
+                    this.#circleChoosed = this.canvseToScreen(rotated, imatrix)
+                }
+
+                if (this.#crossRotateStart) {
+                    circle[i].ifFill = true
+                }
+
+                // 绘制仍然用原坐标（ctx 已旋转）
+                this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
             }
-            // 调用 drawCircle 方法绘制圆形
-            this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
+            ctx.restore()
         }
 
-        // 定义一个数组，用于存储矩形交互元素的信息
         let rect = []
-        // 重置选择的矩形交互元素为 null
         this.#rectChoosed = null
-        // 声明一个变量，用于记录从X方向矩形到Y方向矩形的索引分界点
         let indexFromXtoY
-        // 如果需要显示矩形交互元素
+
         if (flag.rectShow) {
-            // 如果X方向的厚度大于1像素
             if (thicknessX > 1) {
-                // 初始化四个矩形交互元素的信息，分别位于X方向厚度的上下边缘
                 rect[0] = { c: { x: -rectDis, y: -thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
                 rect[1] = { c: { x: rectDis, y: -thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
                 rect[2] = { c: { x: -rectDis, y: thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
                 rect[3] = { c: { x: rectDis, y: thicknessX, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
             } else {
-                // 如果X方向的厚度不大于1像素，初始化两个矩形交互元素的信息，位于X轴上
                 rect[0] = { c: { x: -rectDis, y: 0, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
                 rect[1] = { c: { x: rectDis, y: 0, r: rForRect }, ifFill: false, strokeStyle: colorX, fillStyle: colorX }
             }
-            // 记录从X方向矩形到Y方向矩形的索引分界点
+
             indexFromXtoY = rect.length
 
-            // 如果Y方向的厚度大于1像素
             if (thicknessY > 1) {
-                // 初始化四个矩形交互元素的信息，分别位于Y方向厚度的左右边缘
                 rect[indexFromXtoY] = { c: { x: -thicknessY, y: -rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
                 rect[indexFromXtoY + 1] = { c: { x: -thicknessY, y: rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
                 rect[indexFromXtoY + 2] = { c: { x: thicknessY, y: -rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
                 rect[indexFromXtoY + 3] = { c: { x: thicknessY, y: rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
             } else {
-                // 如果Y方向的厚度不大于1像素，初始化两个矩形交互元素的信息，位于Y轴上
                 rect[indexFromXtoY] = { c: { x: 0, y: -rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
                 rect[indexFromXtoY + 1] = { c: { x: 0, y: rectDis, r: rForRect }, ifFill: false, strokeStyle: colorY, fillStyle: colorY }
             }
-        }
-        // 遍历矩形数组
-        for (let i = 0; i < rect.length; i++) {
-            // 解构出画布坐标的x和y值
-            let { x, y } = canvasPos
-            // 判断鼠标是否在矩形附近，通过比较坐标差值是否在指定范围内
-            if (x && y && Math.abs(rect[i].c.x - x) <= findRange && Math.abs(rect[i].c.y - y) <= findRange) {
-                // 如果在附近，则将矩形设置为填充状态
-                rect[i].ifFill = true
-                // 将选中的矩形坐标转换为屏幕坐标
-                this.#rectChoosed = this.canvseToScreen(rect[i].c, imatrix)
-                // 设置选中矩形的类型
-                this.#rectChoosed.type = rect[i].type
-                // 根据索引判断矩形属于X方向还是Y方向
-                if (i < indexFromXtoY) {
+
+            // 绘制X方向的矩形
+            ctx.save()
+            ctx.rotate(xAngle)
+            for (let i = 0; i < indexFromXtoY; i++) {
+                let { x, y } = canvasPos
+                if (x && y && Math.abs(rect[i].c.x - x) <= findRange && Math.abs(rect[i].c.y - y) <= findRange) {
+                    rect[i].ifFill = true
+                    this.#rectChoosed = this.canvseToScreen(rect[i].c, imatrix)
+                    this.#rectChoosed.type = rect[i].type
                     this.#rectChoosed.axes = "x"
-                } else {
-                    this.#rectChoosed.axes = "y"
+                    this.#rectChoosed.imatrix = imatrix
                 }
-                // 记录选中矩形的逆变换矩阵
-                this.#rectChoosed.imatrix = imatrix
+                if (this.#crossThickStart) {
+                    rect[i].ifFill = true
+                }
+                this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
             }
-            // 如果正在进行十字厚度调整操作，则将所有矩形设置为填充状态
-            if (this.#crossThickStart) {
-                rect[i].ifFill = true
+            ctx.restore()
+
+            // 绘制Y方向的矩形
+            ctx.save()
+            ctx.rotate(yAngle)
+            for (let i = indexFromXtoY; i < rect.length; i++) {
+                let { x, y } = canvasPos
+                if (x && y && Math.abs(rect[i].c.x - x) <= findRange && Math.abs(rect[i].c.y - y) <= findRange) {
+                    rect[i].ifFill = true
+                    this.#rectChoosed = this.canvseToScreen(rect[i].c, imatrix)
+                    this.#rectChoosed.type = rect[i].type
+                    this.#rectChoosed.axes = "y"
+                    this.#rectChoosed.imatrix = imatrix
+                }
+                if (this.#crossThickStart) {
+                    rect[i].ifFill = true
+                }
+                this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
             }
-            // 调用 drawRect 方法绘制矩形
-            this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
+            ctx.restore();
         }
 
-        // 恢复之前保存的画布状态，包括变换矩阵、线条样式等
         ctx.restore();
     }
 
@@ -1223,6 +1269,16 @@ class RenderEngine {
         };
     }
 
+    // a = scaleX
+    // b = skewY
+    // c = skewX
+    // d = scaleY
+    // e = translateX
+    // f = translateY
+    // 如果你没有进行旋转、缩放等复杂变换，仅仅是 translate(x, y)，则 imatrix 应该形如
+    // a = 1, b = 0
+    // c = 0, d = 1
+    // e = -x, f = -y
     screenToCanvas (screenPos, imatrix) {
         // 解构出屏幕坐标的 x 和 y 值
         let { x, y } = screenPos;
