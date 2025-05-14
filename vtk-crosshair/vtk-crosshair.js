@@ -154,12 +154,14 @@ function renderAll_3D () {
         const container = viewports[key].renderEngine.getContainer()
         const renderer = viewports[key].renderEngine.getVtkRenderer()
         const renderWindow = viewports[key].renderEngine.getVtkRendererWindow()
+        const newAxes = viewports[key].renderEngine.getNewAxes()
+        crossSectionState.center = newAxes.newCenter
         drawCrosshairOnAxial({
             container,
             renderer,
             renderWindow,
             currentPlane: viewports[key].name,
-            crossSectionState: crossSectionState
+            crossSectionState
         });
         viewports[key].renderEngine.render3d()
     }
@@ -247,8 +249,9 @@ function worldToScreen (worldPos, renderer, renderWindow) {
     const screenPos = coord.getComputedDisplayValue(renderer);
 
     const [width, height] = renderWindow.getViews()[0].getSize();
+    const result = [screenPos[0], height - screenPos[1]];
 
-    return [screenPos[0], height - screenPos[1]]; // Y翻转，适配Canvas
+    return result; // Y翻转，适配Canvas
 }
 
 
@@ -286,13 +289,16 @@ function drawCrosshairOnAxial ({ container, renderer, currentPlane, renderWindow
         const { start, end } = computePlaneIntersectionLine(center, plane.normal);
         const p1 = worldToScreen(start, renderer, renderWindow);
         const p2 = worldToScreen(end, renderer, renderWindow);
-
-        ctx.beginPath();
-        ctx.moveTo(p1[0], p1[1]);
-        ctx.lineTo(p2[0], p2[1]);
-        ctx.strokeStyle = planeColors[type] || '#00ff00';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.save()
+        if (p1 && p2) {
+            ctx.beginPath();
+            ctx.moveTo(p1[0], p1[1]);
+            ctx.lineTo(p2[0], p2[1]);
+            ctx.strokeStyle = planeColors[type] || '#ff0000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+        ctx.restore()
     }
 }
 

@@ -251,6 +251,9 @@ class RenderEngine {
     getActor () {
         return this.#vtkSource.Actor
     }
+    getNewAxes () {
+        return this.#newaxes;
+    }
     // 设置页面方法（旧版）
     // 根据当前视图模式计算裁剪平面的法线和原点，并设置裁剪平面的属性
     setPage_old (page, thicknessArr, rotateAngelGlobal) {
