@@ -50,21 +50,21 @@ class RenderEngine {
 
         // 创建一个新的 canvas 元素 #renderCanvas3D，设置其样式为绝对定位，顶部和左侧位置为 0px，
         // 宽度和高度与 #renderCanvas 相同
-        // this.#renderCanvas3D = document.createElement("canvas")
-        // this.#renderCanvas3D.style.position = "absolute"
-        // this.#renderCanvas3D.style.top = "0px"
-        // this.#renderCanvas3D.style.left = "0px"
-        // this.#renderCanvas3D.width = this.#renderCanvas.width
-        // this.#renderCanvas3D.height = this.#renderCanvas.height
-        // this.#vtkRootDom.appendChild(this.#renderCanvas3D)
+        this.#renderCanvas3D = document.createElement("canvas")
+        this.#renderCanvas3D.style.position = "absolute"
+        this.#renderCanvas3D.style.top = "0px"
+        this.#renderCanvas3D.style.left = "0px"
+        this.#renderCanvas3D.width = this.#renderCanvas.width
+        this.#renderCanvas3D.height = this.#renderCanvas.height
+        this.#vtkRootDom.appendChild(this.#renderCanvas3D)
 
 
-        //初始化#catcherEngine
-        // this.#catcherEngine = new CatcherEngine(this.#renderCanvas3D)
+        // 初始化#catcherEngine
+        this.#catcherEngine = new CatcherEngine(this.#renderCanvas3D)
         // 设置全局参数
-        // this.#catcherEngine.setGPARA(GPARA)
-        // //初始化catcher的操作
-        // this.#catcherEngine.setRender(this)
+        this.#catcherEngine.setGPARA(GPARA)
+        //初始化catcher的操作
+        this.#catcherEngine.setRender(this)
 
         this.isOrthogonalRotation = false; // 添加开关变量
     }
@@ -94,6 +94,7 @@ class RenderEngine {
     #hideCanvas1 = null
     #hideCanvas2 = null
     #GPARA = null
+    #key = null
 
     // 属性
     #props = {
@@ -187,6 +188,9 @@ class RenderEngine {
         this.#vtkRootDom.style.height = props.rangeSize[1] / 2 + "px"
         this.#vtkRootDom.style.top = props.rangeSize[1] / 2 + "px"
     }
+    setKey (key) {
+        this.#key = key
+    }
     setCurrenViewMod (curViewMod) {
         this.#curViewMod = curViewMod
         // 设置捕获器的当前视图模式
@@ -213,6 +217,10 @@ class RenderEngine {
         camera.setFocalPoint(0, 0, 0);   //当前的十字位置点
         let { newX, newY, newZ, newCenter } = this.#newaxes
         camera.setPosition(-newZ[0], -newZ[1], -newZ[2]);  //相机的位置
+        console.log('test key', this.#key)
+        console.log("test this.#newaxes", this.#newaxes)
+        console.log('test position: ', -newZ[0], -newZ[1], -newZ[2])
+        console.log('test viewUp: ', -newY[0], -newY[1], -newY[2])
         camera.setViewUp(-newY[0], -newY[1], -newY[2])   //视角的方向
         this.#vtkRenderer.setActiveCamera(camera)
         this.#vtkRenderer.resetCamera()

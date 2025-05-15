@@ -19,49 +19,36 @@ const InterpolationMode = {
 
 const vtkFullScreenRenderWindow = vtk.Rendering.Misc.vtkFullScreenRenderWindow;
 
-const viewports = {
-    transverse: { container: dom1 },
-    coronal: { container: dom2 },
-    sagittal: { container: dom3 },
-};
 
-const planes = [
-    { name: "transverse", normal: [0, 0, 1], viewUp: [0, 1, 0] },
-    { name: "coronal", normal: [0, 1, 0], viewUp: [0, 0, 1] },
-    { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, 1] },
-];
+function setCamera (camera, normal, viewUp, center, size) {
+    let viewWidth = 0;
+    let viewHeight = 0;
 
-// 用 vtkFullScreenRenderWindow 初始化每个视口，绑定已有dom容器
-function initViewport (viewport) {
-    const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
-        rootContainer: viewport.container,
-        containerStyle: { height: '100%', width: '100%' },
-        background: [0, 0, 0],
-    });
-
-    // 取 renderer 和 renderWindow
-    const renderer = fullScreenRenderer.getRenderer();
-    const renderWindow = fullScreenRenderer.getRenderWindow();
-
-    viewport.fullScreenRenderer = fullScreenRenderer;
-    viewport.renderer = renderer;
-    viewport.renderWindow = renderWindow;
-
-    // 设置canvas尺寸
-    const canvas = viewport.container.querySelector('canvas');
-    if (canvas) {
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
+    // 根据 normal 决定哪个两个维度构成截面
+    if (normal[0] === 1 || normal[0] === -1) {
+        // sagittal: Y-Z 平面
+        viewWidth = size[1];
+        viewHeight = size[2];
+    } else if (normal[1] === 1 || normal[1] === -1) {
+        // coronal: X-Z 平面
+        viewWidth = size[0];
+        viewHeight = size[2];
+    } else if (normal[2] === 1 || normal[2] === -1) {
+        // transverse: X-Y 平面
+        viewWidth = size[0];
+        viewHeight = size[1];
+    } else {
+        // fallback：斜切方向，用最大值兜底
+        viewWidth = Math.max(size[0], size[1]);
+        viewHeight = Math.max(size[1], size[2]);
     }
-}
 
-// 给视口设置切片actor，渲染
-function setSliceActor (viewport, slice, normal, viewUp, center) {
-    const renderer = viewport.renderer;
-    const camera = renderer.getActiveCamera();
-    console.log('slice: ', slice.getCenter(), slice.getImages(), slice.getOrigin())
-    // 正确的焦点位置是数据体中心
-    const distance = 500;
+    const parallelScale = 0.5 * Math.sqrt(viewWidth ** 2 + viewHeight ** 2); // 对角线一半
+
+    camera.setParallelProjection(true);
+    camera.setParallelScale(parallelScale);
+
+    const distance = Math.max(viewWidth, viewHeight) * 1.5;
     const position = [
         center[0] + normal[0] * distance,
         center[1] + normal[1] * distance,
@@ -71,125 +58,191 @@ function setSliceActor (viewport, slice, normal, viewUp, center) {
     camera.setFocalPoint(...center);
     camera.setPosition(...position);
     camera.setViewUp(...viewUp);
+    camera.orthogonalizeViewUp();
+}
 
-    renderer.addActor(slice);
-    renderer.resetCameraClippingRange(); // 可选
+
+
+
+function setMapperActor (mapper, scalarRange, ww, wl, vtk) {
+    const [minScalar, maxScalar] = scalarRange;
+
+    if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
+        wl = (maxScalar + minScalar) / 2;
+        ww = (maxScalar - minScalar) / 2;
+    }
+
+    const rangeMin = wl - ww * 2;
+    const rangeMax = wl + ww * 2;
+
+    const ctfun = vtk.Rendering.Core.vtkColorTransferFunction.newInstance();
+    ctfun.removeAllPoints();
+    ctfun.addRGBPoint(rangeMin, 0.0, 0.0, 0.0);
+    ctfun.addRGBPoint(wl - ww / 2, 0.3, 0.3, 0.3);
+    ctfun.addRGBPoint(wl, 1.0, 1.0, 1.0);
+    ctfun.addRGBPoint(wl + ww / 2, 1.0, 1.0, 1.0);
+    ctfun.addRGBPoint(rangeMax, 1.0, 1.0, 1.0);
+
+    const ofun = vtk.Common.DataModel.vtkPiecewiseFunction.newInstance();
+    ofun.removeAllPoints();
+    ofun.addPoint(rangeMin, 0.0);
+    ofun.addPoint(wl - ww / 2, 0.15);
+    ofun.addPoint(wl, 0.6);
+    ofun.addPoint(wl + ww / 2, 1.0);
+    ofun.addPoint(rangeMax, 1.0);
+
+    const volumeProperty = vtk.Rendering.Core.vtkVolumeProperty.newInstance();
+    volumeProperty.setInterpolationTypeToLinear();
+    volumeProperty.setRGBTransferFunction(0, ctfun);
+    volumeProperty.setScalarOpacity(0, ofun);
+    volumeProperty.setShade(false); // 关闭阴影，有助于清晰
+    volumeProperty.setAmbient(0.2);
+    volumeProperty.setDiffuse(0.7);
+    volumeProperty.setSpecular(0.0);
+
+    const volumeActor = vtk.Rendering.Core.vtkVolume.newInstance();
+    volumeActor.setMapper(mapper);
+    volumeActor.setProperty(volumeProperty);
+
+    return volumeActor;
+}
+
+
+const viewports = {
+    transverse: { container: dom1 },
+    coronal: { container: dom2 },
+    sagittal: { container: dom3 },
+};
+
+const crossSectionState = {
+    center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
+    planes: [
+        { name: "transverse", normal: [0, 0, 1], viewUp: [-0, -1, -0] },
+        { name: "coronal", normal: [0, 1, 0], viewUp: [-0, 0, -1] },
+        { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
+    ]
+};
+
+function initViewport (viewport) {
+    const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
+        rootContainer: viewport.container,
+        containerStyle: { height: '100%', width: '100%' },
+        background: [0, 0, 0],
+    });
+
+    viewport.fullScreenRenderer = fullScreenRenderer;
+    viewport.renderer = fullScreenRenderer.getRenderer();
+    viewport.renderWindow = fullScreenRenderer.getRenderWindow();
+
+    const canvas = viewport.container.querySelector('canvas');
+    if (canvas) {
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+    }
+}
+
+function getScalarRange (scalars) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < scalars.length; i++) {
+        const val = scalars[i];
+        if (val < min) min = val;
+        if (val > max) max = val;
+    }
+    return [min, max];
+}
+
+function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp, center, scalarRange, thickness = 1.0) {
+    const renderer = viewport.renderer;
+    const camera = renderer.getActiveCamera();
+
+    // 设置相机视角
+    const bounds = imageData.getBounds();
+    const size = [
+        bounds[1] - bounds[0],
+        bounds[3] - bounds[2],
+        bounds[5] - bounds[4],
+    ];
+    setCamera(camera, normal, viewUp, center, size);
+
+    const mapper = vtk.Rendering.Core.vtkVolumeMapper.newInstance();
+    mapper.setInputData(imageData);
+
+    // 设置两个 clipping plane，形成厚度范围
+    const half = thickness / 2;
+    const offset = normal.map(n => n * half);
+
+    const plane1 = vtk.Common.DataModel.vtkPlane.newInstance({
+        origin: [
+            center[0] - offset[0],
+            center[1] - offset[1],
+            center[2] - offset[2],
+        ],
+        normal: normal,
+    });
+
+    const plane2 = vtk.Common.DataModel.vtkPlane.newInstance({
+        origin: [
+            center[0] + offset[0],
+            center[1] + offset[1],
+            center[2] + offset[2],
+        ],
+        normal: normal.map(n => -n), // 反向
+    });
+
+    mapper.removeAllClippingPlanes();
+    mapper.addClippingPlane(plane1);
+    mapper.addClippingPlane(plane2);
+
+    const volumeActor = setMapperActor(mapper, scalarRange, ww, wl, vtk);
+
+    renderer.removeAllViewProps();
+    renderer.addVolume(volumeActor);
+    renderer.resetCameraClippingRange();
     viewport.renderWindow.render();
 }
 
-
 async function start () {
     const testLocalData = await LOCALDATA.getLocalData("headerMR-26");
-    console.log("finished read data", testLocalData);
-
-    // vtkVolumeActorClass 初始化病人影像数据
-    const testLocalCubeSource = new VtkVolumeActorClass(testLocalData.Para, vtk)
+    const testLocalCubeSource = new VtkVolumeActorClass(testLocalData.Para, vtk);
     const imageData = testLocalCubeSource.patientVolume;
-    const extent = imageData.getExtent();
-    const spacing = imageData.getSpacing(); // [sx, sy, sz]
-    const origin = imageData.getOrigin();   // [ox, oy, oz]
 
-    // 初始化每个视口
+    const extent = imageData.getExtent();
+    const spacing = imageData.getSpacing();
+    const origin = imageData.getOrigin();
+
     Object.values(viewports).forEach(initViewport);
 
-    // 获取全局参数
-    let ww = Number(GPARA.ww), wl = Number(GPARA.wl), scale = GPARA.scale;
-    let thickness = [Number(GPARA.thickT), Number(GPARA.thickC), Number(GPARA.thickS)];
+    let ww = Number(GPARA.ww);
+    let wl = Number(GPARA.wl);
 
-    // 创建每个平面的切片并绑定到视口渲染
-    planes.forEach((cfg, index) => {
-        const reslice = vtk.Imaging.Core.vtkImageReslice.newInstance();
-        reslice.setInputData(imageData);
+    const scalars = imageData.getPointData().getScalars().getData();
+    const scalarRange = getScalarRange(scalars);
 
-        // 获取数据中心
-        const baseCenter = [
-            origin[0] + (extent[0] + extent[1]) / 2 * spacing[0],
-            origin[1] + (extent[2] + extent[3]) / 2 * spacing[1],
-            origin[2] + (extent[4] + extent[5]) / 2 * spacing[2],
-        ];
+    if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
+        wl = (scalarRange[1] + scalarRange[0]) / 2;
+        ww = (scalarRange[1] - scalarRange[0]) / 2;
+    }
 
-        // 根据当前平面类型设置对应方向的中心（将slice切到当前轴向中部）
-        const center = [...baseCenter];
-        if (cfg.name === "transverse") {
-            center[2] = origin[2] + ((extent[4] + extent[5]) / 2) * spacing[2];
-        } else if (cfg.name === "coronal") {
-            center[1] = origin[1] + ((extent[2] + extent[3]) / 2) * spacing[1];
-        } else if (cfg.name === "sagittal") {
-            center[0] = origin[0] + ((extent[0] + extent[1]) / 2) * spacing[0];
-        }
+    const center = crossSectionState.center;
 
-        const normal = cfg.normal;
-        const viewUp = cfg.viewUp;
-        const right = [
-            viewUp[1] * normal[2] - viewUp[2] * normal[1],
-            viewUp[2] * normal[0] - viewUp[0] * normal[2],
-            viewUp[0] * normal[1] - viewUp[1] * normal[0],
-        ];
-
-        const mat = new Float32Array(16);
-        for (let i = 0; i < 3; i++) {
-            mat[i] = right[i];
-            mat[i + 4] = viewUp[i];
-            mat[i + 8] = normal[i];
-            mat[i + 12] = center[i];
-        }
-        mat[15] = 1;
-
-        console.log(`Matrix for ${cfg.name}:`, mat);
-
-
-
-
-        reslice.setInterpolationMode(InterpolationMode.LINEAR);
-        reslice.setResliceAxes(mat);
-        // 根据平面方向设置输出间距
-        let outputSpacing = [spacing[0], spacing[1]]; // 横断位默认
-        if (cfg.name === "coronal") {
-            outputSpacing = [spacing[0], spacing[2]]; // X-Z方向
-        } else if (cfg.name === "sagittal") {
-            outputSpacing = [spacing[1], spacing[2]]; // Y-Z方向
-        }
-        reslice.setOutputSpacing(...outputSpacing, 1); // 第三个维度间距设为1（2D切片）
-        // 根据切面法向量决定平面尺寸方向
-        let iDim = 0, jDim = 1;
-        if (Math.abs(normal[0]) === 1) {
-            iDim = 1; jDim = 2; // sagittal (Y-Z)
-        } else if (Math.abs(normal[1]) === 1) {
-            iDim = 0; jDim = 2; // coronal (X-Z)
-        } else if (Math.abs(normal[2]) === 1) {
-            iDim = 0; jDim = 1; // transverse (X-Y)
-        }
-
-        // 计算平面上像素数量（注意 +1）
-        const sizeI = extent[iDim * 2 + 1] - extent[iDim * 2] + 1;
-        const sizeJ = extent[jDim * 2 + 1] - extent[jDim * 2] + 1;
-
-        // 设置 outputExtent，完整覆盖该平面区域
-        reslice.setOutputExtent(
-            0, sizeI - 1,
-            0, sizeJ - 1,
-            0, 0 // 因为是 2D 面
+    crossSectionState.planes.forEach(cfg => {
+        setVolumeWithCrossSection(
+            viewports[cfg.name],
+            imageData,
+            ww,
+            wl,
+            cfg.normal,
+            cfg.viewUp,
+            center,
+            scalarRange,
+            1.0 // 默认厚度
         );
-
-
-
-        const mapper = vtk.Rendering.Core.vtkImageMapper.newInstance();
-        mapper.setInputConnection(reslice.getOutputPort());
-
-        const slice = vtk.Rendering.Core.vtkImageSlice.newInstance();
-        slice.setMapper(mapper);
-        slice.getProperty().setColorWindow(ww);
-        slice.getProperty().setColorLevel(wl);
-
-        console.log(`${cfg.name} mapper input data dims:`, mapper.getInputData().getDimensions?.());
-
-        setSliceActor(viewports[cfg.name], slice, normal, viewUp, center);
-
-
     });
-
-
 }
+
+
+
 
 
 start();
