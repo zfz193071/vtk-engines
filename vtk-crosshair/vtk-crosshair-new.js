@@ -11,62 +11,68 @@ const contents = document.getElementsByClassName("content");
 const widthC = Math.round(contents[0].clientWidth / 3);
 const heightC = contents[0].clientHeight;
 
-const InterpolationMode = {
-    NEAREST: 0,
-    LINEAR: 1,
-    CUBIC: 2,
+
+const viewports = {
+    transverse: { container: dom1 },
+    coronal: { container: dom2 },
+    sagittal: { container: dom3 },
 };
 
-const vtkFullScreenRenderWindow = vtk.Rendering.Misc.vtkFullScreenRenderWindow;
+const crossSectionState = {
+    center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
+    planes: [
+        { name: "transverse", normal: [0, 0, 1], viewUp: [0, -1, 0] },
+        { name: "coronal", normal: [0, 1, 0], viewUp: [0, 0, -1] },
+        { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
+    ]
+};
 
+// ✅ 新增：根据法向量与viewUp生成局部坐标轴
+function getNewAxesFromPlane (center, normal, viewUp) {
+    const zLen = Math.hypot(...normal);
+    const newZ = normal.map(n => n / zLen);
 
-function setCamera (camera, normal, viewUp, center, size) {
-    let viewWidth = 0;
-    let viewHeight = 0;
+    const dot = viewUp[0] * newZ[0] + viewUp[1] * newZ[1] + viewUp[2] * newZ[2];
+    const proj = newZ.map(n => n * dot);
+    const rawY = [
+        viewUp[0] - proj[0],
+        viewUp[1] - proj[1],
+        viewUp[2] - proj[2],
+    ];
+    const yLen = Math.hypot(...rawY);
+    const newY = rawY.map(n => n / yLen);
 
-    // 根据 normal 决定哪个两个维度构成截面
-    if (normal[0] === 1 || normal[0] === -1) {
-        // sagittal: Y-Z 平面
-        viewWidth = size[1];
-        viewHeight = size[2];
-    } else if (normal[1] === 1 || normal[1] === -1) {
-        // coronal: X-Z 平面
-        viewWidth = size[0];
-        viewHeight = size[2];
-    } else if (normal[2] === 1 || normal[2] === -1) {
-        // transverse: X-Y 平面
-        viewWidth = size[0];
-        viewHeight = size[1];
-    } else {
-        // fallback：斜切方向，用最大值兜底
-        viewWidth = Math.max(size[0], size[1]);
-        viewHeight = Math.max(size[1], size[2]);
-    }
-
-    const parallelScale = 0.5 * Math.sqrt(viewWidth ** 2 + viewHeight ** 2); // 对角线一半
-
-    camera.setParallelProjection(true);
-    camera.setParallelScale(parallelScale);
-
-    const distance = Math.max(viewWidth, viewHeight) * 1.5;
-    const position = [
-        center[0] + normal[0] * distance,
-        center[1] + normal[1] * distance,
-        center[2] + normal[2] * distance,
+    const newX = [
+        newY[1] * newZ[2] - newY[2] * newZ[1],
+        newY[2] * newZ[0] - newY[0] * newZ[2],
+        newY[0] * newZ[1] - newY[1] * newZ[0],
     ];
 
+    return { newX, newY, newZ, newCenter: center };
+}
+
+// ✅ 修改：支持任意方向相机摆放逻辑
+function setCamera (camera, newZ, newY, center, size) {
+    const viewSize = Math.max(size[0], size[1], size[2]);
+    const diagonal = Math.sqrt(size[0] ** 2 + size[1] ** 2 + size[2] ** 2);
+    const distance = diagonal * 1.5;
+
+    const position = [
+        center[0] + newZ[0] * distance,
+        center[1] + newZ[1] * distance,
+        center[2] + newZ[2] * distance,
+    ];
+
+    camera.setParallelProjection(true);
+    camera.setParallelScale(viewSize); // 可微调比例
     camera.setFocalPoint(...center);
     camera.setPosition(...position);
-    camera.setViewUp(...viewUp);
+    camera.setViewUp(...newY);
     camera.orthogonalizeViewUp();
 }
 
-
-
-
 function setMapperActor (mapper, scalarRange, ww, wl, vtk) {
     const [minScalar, maxScalar] = scalarRange;
-
     if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
         wl = (maxScalar + minScalar) / 2;
         ww = (maxScalar - minScalar) / 2;
@@ -95,7 +101,7 @@ function setMapperActor (mapper, scalarRange, ww, wl, vtk) {
     volumeProperty.setInterpolationTypeToLinear();
     volumeProperty.setRGBTransferFunction(0, ctfun);
     volumeProperty.setScalarOpacity(0, ofun);
-    volumeProperty.setShade(false); // 关闭阴影，有助于清晰
+    volumeProperty.setShade(false);
     volumeProperty.setAmbient(0.2);
     volumeProperty.setDiffuse(0.7);
     volumeProperty.setSpecular(0.0);
@@ -106,22 +112,6 @@ function setMapperActor (mapper, scalarRange, ww, wl, vtk) {
 
     return volumeActor;
 }
-
-
-const viewports = {
-    transverse: { container: dom1 },
-    coronal: { container: dom2 },
-    sagittal: { container: dom3 },
-};
-
-const crossSectionState = {
-    center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
-    planes: [
-        { name: "transverse", normal: [0, 0, 1], viewUp: [-0, -1, -0] },
-        { name: "coronal", normal: [0, 1, 0], viewUp: [-0, 0, -1] },
-        { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
-    ]
-};
 
 function initViewport (viewport) {
     const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
@@ -156,38 +146,39 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
     const renderer = viewport.renderer;
     const camera = renderer.getActiveCamera();
 
-    // 设置相机视角
+    const { newX, newY, newZ, newCenter } = getNewAxesFromPlane(center, normal, viewUp);
+
     const bounds = imageData.getBounds();
     const size = [
         bounds[1] - bounds[0],
         bounds[3] - bounds[2],
         bounds[5] - bounds[4],
     ];
-    setCamera(camera, normal, viewUp, center, size);
+    setCamera(camera, newZ, newY, newCenter, size);
 
     const mapper = vtk.Rendering.Core.vtkVolumeMapper.newInstance();
     mapper.setInputData(imageData);
 
-    // 设置两个 clipping plane，形成厚度范围
+    // ✅ 双 clipping plane
     const half = thickness / 2;
-    const offset = normal.map(n => n * half);
+    const offset = newZ.map(n => n * half);
 
     const plane1 = vtk.Common.DataModel.vtkPlane.newInstance({
         origin: [
-            center[0] - offset[0],
-            center[1] - offset[1],
-            center[2] - offset[2],
+            newCenter[0] - offset[0],
+            newCenter[1] - offset[1],
+            newCenter[2] - offset[2],
         ],
-        normal: normal,
+        normal: newZ,
     });
 
     const plane2 = vtk.Common.DataModel.vtkPlane.newInstance({
         origin: [
-            center[0] + offset[0],
-            center[1] + offset[1],
-            center[2] + offset[2],
+            newCenter[0] + offset[0],
+            newCenter[1] + offset[1],
+            newCenter[2] + offset[2],
         ],
-        normal: normal.map(n => -n), // 反向
+        normal: newZ.map(n => -n),
     });
 
     mapper.removeAllClippingPlanes();
@@ -236,13 +227,9 @@ async function start () {
             cfg.viewUp,
             center,
             scalarRange,
-            1.0 // 默认厚度
+            1.0
         );
     });
 }
-
-
-
-
 
 start();
