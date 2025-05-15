@@ -16,18 +16,20 @@
         height: 100%;
         border: 1px solid paleturquoise;
         position: relative;
-        .viewport_canvas{
+        
+        
+      }
+      .viewport .viewport_canvas{
           position: absolute;
           top: 0;
           bottom: 0;
         }
-        .viewport_div{
+      .viewport .viewport_div{
             position: absolute;
             display: block;
             top: 0;
             bottom: 0;
         }
-      }
       .content {
         width: 100%;
         height: 720px;
@@ -225,6 +227,6 @@
     // mat4.multiply(result, axes, origin);
     // console.log(result);
   </script>
-  <script type="module" src="./vtk-crosshair.js"></script>
+  <script type="module" src="./vtk-crosshair-new.js"></script>
 
 </html>

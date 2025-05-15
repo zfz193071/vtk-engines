@@ -28,6 +28,7 @@ class RenderEngine {
         this.#renderContext = this.getContext()
         this.setProps(para)
         // 创建一个全屏渲染窗口实例，将 #vtkRootDom 作为根容器，设置容器样式为高度和宽度均为 100%，背景颜色为黑色
+
         const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
             rootContainer: this.#vtkRootDom,
             containerStyle: {
@@ -49,21 +50,21 @@ class RenderEngine {
 
         // 创建一个新的 canvas 元素 #renderCanvas3D，设置其样式为绝对定位，顶部和左侧位置为 0px，
         // 宽度和高度与 #renderCanvas 相同
-        this.#renderCanvas3D = document.createElement("canvas")
-        this.#renderCanvas3D.style.position = "absolute"
-        this.#renderCanvas3D.style.top = "0px"
-        this.#renderCanvas3D.style.left = "0px"
-        this.#renderCanvas3D.width = this.#renderCanvas.width
-        this.#renderCanvas3D.height = this.#renderCanvas.height
-        this.#vtkRootDom.appendChild(this.#renderCanvas3D)
+        // this.#renderCanvas3D = document.createElement("canvas")
+        // this.#renderCanvas3D.style.position = "absolute"
+        // this.#renderCanvas3D.style.top = "0px"
+        // this.#renderCanvas3D.style.left = "0px"
+        // this.#renderCanvas3D.width = this.#renderCanvas.width
+        // this.#renderCanvas3D.height = this.#renderCanvas.height
+        // this.#vtkRootDom.appendChild(this.#renderCanvas3D)
 
 
         //初始化#catcherEngine
-        this.#catcherEngine = new CatcherEngine(this.#renderCanvas3D)
+        // this.#catcherEngine = new CatcherEngine(this.#renderCanvas3D)
         // 设置全局参数
-        this.#catcherEngine.setGPARA(GPARA)
-        //初始化catcher的操作
-        this.#catcherEngine.setRender(this)
+        // this.#catcherEngine.setGPARA(GPARA)
+        // //初始化catcher的操作
+        // this.#catcherEngine.setRender(this)
 
         this.isOrthogonalRotation = false; // 添加开关变量
     }
@@ -199,6 +200,13 @@ class RenderEngine {
     setScale3D (scale, rotateAngelGlobal) {
         this.setCamera(scale, rotateAngelGlobal)
     }
+    setSliceActor (sliceActor) {
+        this.#vtkSource = sliceActor;
+        this.#vtkRenderer.addActor(sliceActor);
+        this.#vtkRenderer.resetCamera();
+        this.#vtkRenderWindow.render();
+    }
+
     setCamera (scale, rotateAngelGlobal) {
         let camera = vtk.Rendering.Core.vtkCamera.newInstance();
 
