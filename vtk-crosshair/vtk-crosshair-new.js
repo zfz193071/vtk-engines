@@ -56,12 +56,27 @@ function initViewport (viewport) {
 }
 
 // 给视口设置切片actor，渲染
-function setSliceActor (viewport, slice) {
+function setSliceActor (viewport, slice, normal, viewUp, center) {
     const renderer = viewport.renderer;
+    const camera = renderer.getActiveCamera();
+
+    // 正确的焦点位置是数据体中心
+    const distance = 500;
+    const position = [
+        center[0] + normal[0] * distance,
+        center[1] + normal[1] * distance,
+        center[2] + normal[2] * distance,
+    ];
+
+    camera.setFocalPoint(...center);
+    camera.setPosition(...position);
+    camera.setViewUp(...viewUp);
+
     renderer.addActor(slice);
-    renderer.resetCamera();
+    renderer.resetCameraClippingRange(); // 可选
     viewport.renderWindow.render();
 }
+
 
 async function start () {
     const testLocalData = await LOCALDATA.getLocalData("headerMR-26");
@@ -86,47 +101,88 @@ async function start () {
         const reslice = vtk.Imaging.Core.vtkImageReslice.newInstance();
         reslice.setInputData(imageData);
 
-        // 计算切面矩阵
-        const center = [
+        // 获取数据中心
+        const baseCenter = [
             origin[0] + (extent[0] + extent[1]) / 2 * spacing[0],
             origin[1] + (extent[2] + extent[3]) / 2 * spacing[1],
             origin[2] + (extent[4] + extent[5]) / 2 * spacing[2],
         ];
 
-        const builder = vtk.Common.Core.vtkMatrixBuilder.buildFromRadian();
-        const mat = builder.identity()
-            .rotateFromDirections([0, 0, 1], cfg.normal)
-            .translate(...center)
-            .getMatrix();
+        // 根据当前平面类型设置对应方向的中心（将slice切到当前轴向中部）
+        const center = [...baseCenter];
+        if (cfg.name === "transverse") {
+            center[2] = origin[2] + ((extent[4] + extent[5]) / 2) * spacing[2];
+        } else if (cfg.name === "coronal") {
+            center[1] = origin[1] + ((extent[2] + extent[3]) / 2) * spacing[1];
+        } else if (cfg.name === "sagittal") {
+            center[0] = origin[0] + ((extent[0] + extent[1]) / 2) * spacing[0];
+        }
 
+        const normal = cfg.normal;
+        const viewUp = cfg.viewUp;
+        const right = [
+            viewUp[1] * normal[2] - viewUp[2] * normal[1],
+            viewUp[2] * normal[0] - viewUp[0] * normal[2],
+            viewUp[0] * normal[1] - viewUp[1] * normal[0],
+        ];
 
+        const mat = new Float32Array(16);
+        for (let i = 0; i < 3; i++) {
+            mat[i] = right[i];
+            mat[i + 4] = viewUp[i];
+            mat[i + 8] = normal[i];
+            mat[i + 12] = center[i];
+        }
+        mat[15] = 1;
 
-        const outputData = reslice.getOutputData();
-        console.log(cfg.name + 'output: ', outputData.getDimensions());  // 应该能看到非零值
+        console.log(`Matrix for ${cfg.name}:`, mat);
+
 
 
 
         reslice.setInterpolationMode(InterpolationMode.LINEAR);
+        reslice.setResliceAxes(mat);
+        reslice.setOutputSpacing(spacing[0], spacing[1], spacing[2]);
+        // 根据切面法向量决定平面尺寸方向
+        let iDim = 0, jDim = 1;
+        if (Math.abs(normal[0]) === 1) {
+            iDim = 1; jDim = 2; // sagittal (Y-Z)
+        } else if (Math.abs(normal[1]) === 1) {
+            iDim = 0; jDim = 2; // coronal (X-Z)
+        } else if (Math.abs(normal[2]) === 1) {
+            iDim = 0; jDim = 1; // transverse (X-Y)
+        }
+
+        // 计算平面上像素数量（注意 +1）
+        const sizeI = extent[iDim * 2 + 1] - extent[iDim * 2] + 1;
+        const sizeJ = extent[jDim * 2 + 1] - extent[jDim * 2] + 1;
+
+        // 设置 outputExtent，完整覆盖该平面区域
+        reslice.setOutputExtent(
+            0, sizeI - 1,
+            0, sizeJ - 1,
+            0, 0 // 因为是 2D 面
+        );
+
+
 
         const mapper = vtk.Rendering.Core.vtkImageMapper.newInstance();
         mapper.setInputConnection(reslice.getOutputPort());
 
         const slice = vtk.Rendering.Core.vtkImageSlice.newInstance();
         slice.setMapper(mapper);
-
-
-        // 设置切片 actor
-        setSliceActor(viewports[cfg.name], slice);
-
         slice.getProperty().setColorWindow(ww);
         slice.getProperty().setColorLevel(wl);
 
+        console.log(`${cfg.name} mapper input data dims:`, mapper.getInputData().getDimensions?.());
 
-        // setResliceAxes 应该在 setOutputSpacing 之后再 render
-        // 有时候 vtkImageReslice 在设置完 matrix 后，立即 setOutputSpacing 会被覆盖
-        reslice.setOutputSpacing(1, 1, thickness[index]);
-        reslice.setResliceAxes(mat);
+        setSliceActor(viewports[cfg.name], slice, normal, viewUp, center);
+
+
     });
+
+
 }
+
 
 start();
