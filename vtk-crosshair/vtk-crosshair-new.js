@@ -5,11 +5,7 @@ import LOCALDATA from "../util/loadLocalData.js";
 const dom1 = document.getElementById("transverse-xy");
 const dom2 = document.getElementById("coronal-xz");
 const dom3 = document.getElementById("sagittal-yz");
-
-// 取内容容器宽高，计算单个视口尺寸
-const contents = document.getElementsByClassName("content");
-const widthC = Math.round(contents[0].clientWidth / 3);
-const heightC = contents[0].clientHeight;
+const dom3d = document.getElementById("render_3d")
 
 
 const viewports = {
@@ -27,7 +23,7 @@ const crossSectionState = {
     ]
 };
 
-// ✅ 新增：根据法向量与viewUp生成局部坐标轴
+// 根据法向量与viewUp生成局部坐标轴
 function getNewAxesFromPlane (center, normal, viewUp) {
     const zLen = Math.hypot(...normal);
     const newZ = normal.map(n => n / zLen);
@@ -51,7 +47,7 @@ function getNewAxesFromPlane (center, normal, viewUp) {
     return { newX, newY, newZ, newCenter: center };
 }
 
-// ✅ 修改：支持任意方向相机摆放逻辑
+// 支持任意方向相机摆放逻辑
 function setCamera (camera, newZ, newY, center, size) {
     const viewSize = Math.max(size[0], size[1], size[2]);
     const diagonal = Math.sqrt(size[0] ** 2 + size[1] ** 2 + size[2] ** 2);
@@ -159,7 +155,7 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
     const mapper = vtk.Rendering.Core.vtkVolumeMapper.newInstance();
     mapper.setInputData(imageData);
 
-    // ✅ 双 clipping plane
+    // 双 clipping plane
     const half = thickness / 2;
     const offset = newZ.map(n => n * half);
 
@@ -193,22 +189,51 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
     viewport.renderWindow.render();
 }
 
+function addCrossSectionActorTo3DRenderer (renderer, imageData, normal, viewUp, center, scalarRange, ww, wl, thickness = 1.0) {
+    const { newX, newY, newZ, newCenter } = getNewAxesFromPlane(center, normal, viewUp);
+
+    const mapper = vtk.Rendering.Core.vtkVolumeMapper.newInstance();
+    mapper.setInputData(imageData);
+
+    const half = thickness / 2;
+    const offset = newZ.map(n => n * half);
+
+    const plane1 = vtk.Common.DataModel.vtkPlane.newInstance({
+        origin: [
+            newCenter[0] - offset[0],
+            newCenter[1] - offset[1],
+            newCenter[2] - offset[2],
+        ],
+        normal: newZ,
+    });
+
+    const plane2 = vtk.Common.DataModel.vtkPlane.newInstance({
+        origin: [
+            newCenter[0] + offset[0],
+            newCenter[1] + offset[1],
+            newCenter[2] + offset[2],
+        ],
+        normal: newZ.map(n => -n),
+    });
+
+    mapper.removeAllClippingPlanes();
+    mapper.addClippingPlane(plane1);
+    mapper.addClippingPlane(plane2);
+
+    const volumeActor = setMapperActor(mapper, scalarRange, ww, wl, vtk);
+    renderer.addVolume(volumeActor);
+}
+
 async function start () {
     const testLocalData = await LOCALDATA.getLocalData("headerMR-26");
     const testLocalCubeSource = new VtkVolumeActorClass(testLocalData.Para, vtk);
     const imageData = testLocalCubeSource.patientVolume;
 
-    const extent = imageData.getExtent();
-    const spacing = imageData.getSpacing();
-    const origin = imageData.getOrigin();
-
-    Object.values(viewports).forEach(initViewport);
+    const scalars = imageData.getPointData().getScalars().getData();
+    const scalarRange = getScalarRange(scalars);
 
     let ww = Number(GPARA.ww);
     let wl = Number(GPARA.wl);
-
-    const scalars = imageData.getPointData().getScalars().getData();
-    const scalarRange = getScalarRange(scalars);
 
     if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
         wl = (scalarRange[1] + scalarRange[0]) / 2;
@@ -217,9 +242,13 @@ async function start () {
 
     const center = crossSectionState.center;
 
+    // ✅ 1. 初始化每个正交切面对应的 2D 视图
+    Object.values(viewports).forEach(initViewport);
+
     crossSectionState.planes.forEach(cfg => {
+        const viewport = viewports[cfg.name];
         setVolumeWithCrossSection(
-            viewports[cfg.name],
+            viewport,
             imageData,
             ww,
             wl,
@@ -230,6 +259,46 @@ async function start () {
             1.0
         );
     });
+
+    // ✅ 2. 初始化三维视图，叠加三个截面
+    const fullScreenRenderer3D = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
+        rootContainer: dom3d,
+        containerStyle: { width: "100%", height: "100%" },
+        background: [0.1, 0.1, 0.1]
+    });
+
+    const renderer3D = fullScreenRenderer3D.getRenderer();
+    const renderWindow3D = fullScreenRenderer3D.getRenderWindow();
+    const camera3D = renderer3D.getActiveCamera();
+
+    const bounds = imageData.getBounds();
+    const size = [
+        bounds[1] - bounds[0],
+        bounds[3] - bounds[2],
+        bounds[5] - bounds[4],
+    ];
+
+    crossSectionState.planes.forEach(cfg => {
+        addCrossSectionActorTo3DRenderer(
+            renderer3D,
+            imageData,
+            cfg.normal,
+            cfg.viewUp,
+            center,
+            scalarRange,
+            ww,
+            wl,
+            1.0
+        );
+    });
+
+    const diagonal = Math.sqrt(size[0] ** 2 + size[1] ** 2 + size[2] ** 2);
+    camera3D.setFocalPoint(...center);
+    camera3D.setPosition(center[0] + diagonal, center[1] + diagonal, center[2] + diagonal);
+    camera3D.setViewUp(0, 0, 1);
+    renderer3D.resetCamera();
+    renderWindow3D.render();
 }
+
 
 start();
