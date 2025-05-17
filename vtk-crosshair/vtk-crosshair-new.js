@@ -1,5 +1,6 @@
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import LOCALDATA from "../util/loadLocalData.js";
+import { imageToCanvas, worldToImage } from "../util/tools.js";
 
 // 三个容器dom
 const dom1 = document.getElementById("transverse-xy");
@@ -7,12 +8,6 @@ const dom2 = document.getElementById("coronal-xz");
 const dom3 = document.getElementById("sagittal-yz");
 const dom3d = document.getElementById("render_3d")
 
-
-const viewports = {
-    transverse: { container: dom1 },
-    coronal: { container: dom2 },
-    sagittal: { container: dom3 },
-};
 
 const crossSectionState = {
     center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
@@ -22,6 +17,92 @@ const crossSectionState = {
         { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
     ]
 };
+
+const viewports = {};
+crossSectionState.planes.forEach(plane => {
+    const name = plane.name;
+    const container = {
+        transverse: dom1,
+        coronal: dom2,
+        sagittal: dom3,
+    }[name];
+
+    viewports[name] = {
+        container,
+        plane,
+        imageData: null,
+        renderer: null,
+    };
+});
+
+
+
+// 使用 world → image → canvas 显示线段
+function drawProjectedLineInCanvas (viewport, worldP1, worldP2, lineAxes) {
+    console.log('test worldcoord: ', worldP1, worldP2);
+    const imageData = viewport.imageData;
+
+    const canvas = viewport.container.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+
+    const imageP1 = worldToImage(imageData, worldP1);
+    const imageP2 = worldToImage(imageData, worldP2);
+
+    console.log("test Image imageP1 imageP2: ", imageP1, imageP2);
+
+    const [x1, y1] = imageToCanvas(imageP1, viewport, lineAxes);
+    const [x2, y2] = imageToCanvas(imageP2, viewport, lineAxes);
+
+    console.log("test canvas x1, y1, x2, y2: ", x1, y1, x2, y2);
+
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'red';
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+
+function drawAllCrossLines (center) {
+    const planeTriplets = [
+        ['transverse', 'coronal', 'sagittal'],
+        ['coronal', 'transverse', 'sagittal'],
+        ['sagittal', 'transverse', 'coronal'],
+    ];
+
+    planeTriplets.forEach(([target, a, b]) => {
+        const planeA = crossSectionState.planes.find(p => p.name === a);
+        const planeB = crossSectionState.planes.find(p => p.name === b);
+        const viewport = viewports[target];
+
+        viewport.plane = crossSectionState.planes.find(p => p.name === target); // 当前主视图
+
+        // 计算方向向量（法向量叉积）
+        const lineDir = [
+            planeA.normal[1] * planeB.normal[2] - planeA.normal[2] * planeB.normal[1],
+            planeA.normal[2] * planeB.normal[0] - planeA.normal[0] * planeB.normal[2],
+            planeA.normal[0] * planeB.normal[1] - planeA.normal[1] * planeB.normal[0],
+        ];
+        const len = 150;
+        const p1 = center.map((c, i) => c - lineDir[i] * len);
+        const p2 = center.map((c, i) => c + lineDir[i] * len);
+
+        // 计算在哪两个维度上变化最大
+        const absDir = lineDir.map(Math.abs);
+        const sortedIndices = absDir.map((val, idx) => ({ val, idx }))
+            .sort((a, b) => b.val - a.val);
+        const axisI = sortedIndices[0].idx;
+        const axisJ = sortedIndices[1].idx;
+
+        drawProjectedLineInCanvas(viewport, p1, p2, [axisI, axisJ]);
+    });
+}
+
+
 
 // 根据法向量与viewUp生成局部坐标轴
 function getNewAxesFromPlane (center, normal, viewUp) {
@@ -122,10 +203,12 @@ function initViewport (viewport) {
 
     const canvas = viewport.container.querySelector('canvas');
     if (canvas) {
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
+        const rect = viewport.container.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
     }
 }
+
 
 function getScalarRange (scalars) {
     let min = Infinity;
@@ -223,6 +306,11 @@ function addCrossSectionActorTo3DRenderer (renderer, imageData, normal, viewUp, 
     const volumeActor = setMapperActor(mapper, scalarRange, ww, wl, vtk);
     renderer.addVolume(volumeActor);
 }
+function setImageDataForAllViewports (imageData) {
+    Object.values(viewports).forEach(viewport => {
+        viewport.imageData = imageData;
+    });
+}
 
 async function start () {
     const testLocalData = await LOCALDATA.getLocalData("headerMR-26");
@@ -241,9 +329,12 @@ async function start () {
     }
 
     const center = crossSectionState.center;
+    setImageDataForAllViewports(imageData);
 
     // ✅ 1. 初始化每个正交切面对应的 2D 视图
-    Object.values(viewports).forEach(initViewport);
+    Object.values(viewports).forEach(viewport => {
+        initViewport(viewport);
+    });
 
     crossSectionState.planes.forEach(cfg => {
         const viewport = viewports[cfg.name];
@@ -258,6 +349,10 @@ async function start () {
             scalarRange,
             1.0
         );
+        const canvas = viewport.container.querySelector('canvas');
+        const [canvasWidth, canvasHeight] = [canvas.width, canvas.height];
+
+        console.log("test canvasWidth, canvasHeight: ", canvasWidth, canvasHeight);
     });
 
     // ✅ 2. 初始化三维视图，叠加三个截面
@@ -298,6 +393,9 @@ async function start () {
     camera3D.setViewUp(0, 0, 1);
     renderer3D.resetCamera();
     renderWindow3D.render();
+
+
+    drawAllCrossLines(center);
 }
 
 

@@ -16,20 +16,27 @@
         height: 100%;
         border: 1px solid paleturquoise;
         position: relative;
-        
-        
       }
-      .viewport .viewport_canvas{
-          position: absolute;
-          top: 0;
-          bottom: 0;
-        }
-      .viewport .viewport_div{
-            position: absolute;
-            display: block;
-            top: 0;
-            bottom: 0;
-        }
+
+      .viewport .viewport_canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 10;             /* 保证canvas在vtk画布之上 */
+        pointer-events: none;    /* 允许鼠标事件穿透 */
+      }
+
+      .viewport .viewport_div {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 5;
+      }
+
       .content {
         width: 100%;
         height: 720px;
