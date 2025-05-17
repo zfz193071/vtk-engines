@@ -123,7 +123,6 @@ export function imageToCanvas (imageCoord, viewport, lineAxes) {
   const spacing = imageData.getSpacing(); // [x, y, z]
 
   const [axisI, axisJ] = lineAxes;
-  console.log('test axis: ', lineAxes)
   const i = imageCoord[axisI];
   const j = imageCoord[axisJ];
 

@@ -35,13 +35,12 @@ crossSectionState.planes.forEach(plane => {
     };
 });
 
-
-
 // 使用 world → image → canvas 显示线段
-function drawProjectedLineInCanvas (viewport, worldP1, worldP2, lineAxes) {
+function drawProjectedLineInCanvas (viewport, worldP1, worldP2) {
+    console.log("test viewport plane: ", viewport.plane.name);
     console.log('test worldcoord: ', worldP1, worldP2);
-    const imageData = viewport.imageData;
 
+    const imageData = viewport.imageData;
     const canvas = viewport.container.querySelector('canvas');
     const ctx = canvas.getContext('2d');
 
@@ -49,14 +48,14 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, lineAxes) {
     const imageP2 = worldToImage(imageData, worldP2);
 
     console.log("test Image imageP1 imageP2: ", imageP1, imageP2);
+    console.log("test axisMap: ", viewport.axisMap);
 
-    const [x1, y1] = imageToCanvas(imageP1, viewport, lineAxes);
-    const [x2, y2] = imageToCanvas(imageP2, viewport, lineAxes);
+    const [x1, y1] = imageToCanvas(imageP1, viewport, viewport.axisMap);
+    const [x2, y2] = imageToCanvas(imageP2, viewport, viewport.axisMap);
 
     console.log("test canvas x1, y1, x2, y2: ", x1, y1, x2, y2);
 
     ctx.save();
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'red';
     ctx.beginPath();
@@ -66,39 +65,49 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, lineAxes) {
     ctx.restore();
 }
 
-
 function drawAllCrossLines (center) {
-    const planeTriplets = [
-        ['transverse', 'coronal', 'sagittal'],
-        ['coronal', 'transverse', 'sagittal'],
-        ['sagittal', 'transverse', 'coronal'],
-    ];
+    const planeNames = ['transverse', 'coronal', 'sagittal'];
+    const axisMapLookup = {
+        transverse: [0, 1],
+        coronal: [0, 2],
+        sagittal: [1, 2],
+    };
 
-    planeTriplets.forEach(([target, a, b]) => {
-        const planeA = crossSectionState.planes.find(p => p.name === a);
-        const planeB = crossSectionState.planes.find(p => p.name === b);
+    planeNames.forEach(target => {
         const viewport = viewports[target];
+        viewport.plane = crossSectionState.planes.find(p => p.name === target);
+        viewport.axisMap = axisMapLookup[target];
 
-        viewport.plane = crossSectionState.planes.find(p => p.name === target); // 当前主视图
+        const canvas = viewport.container.querySelector('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 计算方向向量（法向量叉积）
-        const lineDir = [
-            planeA.normal[1] * planeB.normal[2] - planeA.normal[2] * planeB.normal[1],
-            planeA.normal[2] * planeB.normal[0] - planeA.normal[0] * planeB.normal[2],
-            planeA.normal[0] * planeB.normal[1] - planeA.normal[1] * planeB.normal[0],
-        ];
-        const len = 150;
-        const p1 = center.map((c, i) => c - lineDir[i] * len);
-        const p2 = center.map((c, i) => c + lineDir[i] * len);
+        const targetNormal = viewport.plane.normal;
+        const otherPlanes = planeNames.filter(name => name !== target);
 
-        // 计算在哪两个维度上变化最大
-        const absDir = lineDir.map(Math.abs);
-        const sortedIndices = absDir.map((val, idx) => ({ val, idx }))
-            .sort((a, b) => b.val - a.val);
-        const axisI = sortedIndices[0].idx;
-        const axisJ = sortedIndices[1].idx;
+        otherPlanes.forEach(otherName => {
+            const otherPlane = crossSectionState.planes.find(p => p.name === otherName);
 
-        drawProjectedLineInCanvas(viewport, p1, p2, [axisI, axisJ]);
+            // 计算相交线方向（两法线的叉积）
+            const lineDir = [
+                targetNormal[1] * otherPlane.normal[2] - targetNormal[2] * otherPlane.normal[1],
+                targetNormal[2] * otherPlane.normal[0] - targetNormal[0] * otherPlane.normal[2],
+                targetNormal[0] * otherPlane.normal[1] - targetNormal[1] * otherPlane.normal[0],
+            ];
+
+            const magnitude = Math.sqrt(lineDir[0] ** 2 + lineDir[1] ** 2 + lineDir[2] ** 2);
+            if (magnitude < 1e-6) {
+                console.warn(`Skipped line from ${target} ∩ ${otherName}, zero direction vector`);
+                return;
+            }
+
+            const normalizedDir = lineDir.map(d => d / magnitude);
+            const len = 150;
+            const worldP1 = center.map((c, i) => c - normalizedDir[i] * len);
+            const worldP2 = center.map((c, i) => c + normalizedDir[i] * len);
+
+            drawProjectedLineInCanvas(viewport, worldP1, worldP2);
+        });
     });
 }
 
