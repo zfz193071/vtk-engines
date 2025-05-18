@@ -1,6 +1,6 @@
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import LOCALDATA from "../util/loadLocalData.js";
-import { imageToCanvas, worldToImage } from "../util/tools.js";
+import { imageToCanvas, worldToImage, getImageCenterWorld } from "../util/tools.js";
 
 // 三个容器dom
 const dom1 = document.getElementById("transverse-xy");
@@ -11,11 +11,17 @@ const dom3d = document.getElementById("render_3d")
 
 const crossSectionState = {
     center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
+    // center: [-0.9, 10, 20],
     planes: [
         { name: "transverse", normal: [0, 0, 1], viewUp: [0, -1, 0] },
         { name: "coronal", normal: [0, 1, 0], viewUp: [0, 0, -1] },
         { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
     ]
+};
+const lineColors = {
+    transverse: "#8a00da", // purple
+    coronal: "#cd9700",    // orange
+    sagittal: "#3470d8",   // blue
 };
 
 const viewports = {};
@@ -36,7 +42,7 @@ crossSectionState.planes.forEach(plane => {
 });
 
 // 使用 world → image → canvas 显示线段
-function drawProjectedLineInCanvas (viewport, worldP1, worldP2) {
+function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
     console.log("test viewport plane: ", viewport.plane.name);
     console.log('test worldcoord: ', worldP1, worldP2);
 
@@ -57,7 +63,7 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2) {
 
     ctx.save();
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'red';
+    ctx.strokeStyle = color;
     ctx.beginPath();
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
@@ -103,11 +109,14 @@ function drawAllCrossLines (center) {
 
             const normalizedDir = lineDir.map(d => d / magnitude);
             const len = 150;
-            const worldP1 = center.map((c, i) => c - normalizedDir[i] * len);
-            const worldP2 = center.map((c, i) => c + normalizedDir[i] * len);
+            const imageCenter = getImageCenterWorld(viewport.imageData); // ← 加上这句
+            const worldP1 = imageCenter.map((c, i) => c - normalizedDir[i] * len);
+            const worldP2 = imageCenter.map((c, i) => c + normalizedDir[i] * len);
 
-            drawProjectedLineInCanvas(viewport, worldP1, worldP2);
+            const color = lineColors[otherName]; // 使用另一个平面名称获取颜色
+            drawProjectedLineInCanvas(viewport, worldP1, worldP2, color);
         });
+
     });
 }
 
@@ -243,6 +252,8 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
         bounds[5] - bounds[4],
     ];
     setCamera(camera, newZ, newY, newCenter, size);
+    console.log('当前视图对应切片 index：', imageData.worldToIndex(center));
+
 
     const mapper = vtk.Rendering.Core.vtkVolumeMapper.newInstance();
     mapper.setInputData(imageData);

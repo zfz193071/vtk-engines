@@ -46,9 +46,10 @@ export function worldToImage (imageData, worldCoord) {
   const origin = imageData.getOrigin();
   const spacing = imageData.getSpacing();
   const dir = imageData.getDirection();
-  // console.log('test origin1: ', origin);
-  // console.log('test spacing1: ', spacing);
-  // console.log('test dir1: ', dir);
+  console.log('test origin: ', origin);
+  console.log('test spacing: ', spacing);
+  console.log('test dir: ', dir);
+  console.log('test extent: ', imageData.getExtent());
   // console.log('test dims: ', imageData.getDimensions());
   // console.log('test spacing: ', imageData.getSpacing());
 
@@ -110,7 +111,47 @@ export function worldToImage1 (worldCoord, origin, spacing, direction = [
 
   return ijkFloat;
 }
+// 获取合法中心点, 确保生成的 world 点在当前图像 volume 的合法范围内
+export function getImageCenterWorld (imageData) {
+  const extent = imageData.getExtent(); // [xMin, xMax, yMin, yMax, zMin, zMax]
+  const spacing = imageData.getSpacing(); // [sx, sy, sz]
+  const origin = imageData.getOrigin();   // [ox, oy, oz]
+  const direction = imageData.getDirection(); // 3x3 matrix flat
 
+  // 图像中心的索引坐标
+  const centerIJK = [
+    (extent[0] + extent[1]) / 2,
+    (extent[2] + extent[3]) / 2,
+    (extent[4] + extent[5]) / 2,
+  ];
+
+  // 构造方向矩阵
+  const D = [
+    direction.slice(0, 3),
+    direction.slice(3, 6),
+    direction.slice(6, 9),
+  ];
+
+  // 乘 spacing
+  const scaled = [
+    centerIJK[0] * spacing[0],
+    centerIJK[1] * spacing[1],
+    centerIJK[2] * spacing[2],
+  ];
+
+  // D * scaled
+  const Ds = [
+    D[0][0] * scaled[0] + D[0][1] * scaled[1] + D[0][2] * scaled[2],
+    D[1][0] * scaled[0] + D[1][1] * scaled[1] + D[1][2] * scaled[2],
+    D[2][0] * scaled[0] + D[2][1] * scaled[1] + D[2][2] * scaled[2],
+  ];
+
+  return [
+    origin[0] + Ds[0],
+    origin[1] + Ds[1],
+    origin[2] + Ds[2],
+  ];
+}
 
 
 // 把 image 坐标（ijk）转为 canvas 坐标
@@ -120,29 +161,33 @@ export function imageToCanvas (imageCoord, viewport, lineAxes) {
 
   const imageData = viewport.imageData;
   const dims = imageData.getDimensions(); // [x, y, z]
-  const spacing = imageData.getSpacing(); // [x, y, z]
 
   const [axisI, axisJ] = lineAxes;
   const i = imageCoord[axisI];
   const j = imageCoord[axisJ];
 
-  const extentI = dims[axisI] * spacing[axisI];
-  const extentJ = dims[axisJ] * spacing[axisJ];
+  const extentI = dims[axisI];
+  const extentJ = dims[axisJ];
 
-  const centerI = dims[axisI] / 2;
-  const centerJ = dims[axisJ] / 2;
+  // 中心索引（体素索引，不是距离）
+  const centerI = extentI / 2;
+  const centerJ = extentJ / 2;
 
-  const xNorm = (i - centerI) * spacing[axisI];
-  const yNorm = (j - centerJ) * spacing[axisJ];
+  // 体素偏移量，相对于中心体素索引的偏移
+  const deltaI = i - centerI;
+  const deltaJ = j - centerJ;
 
+  // 计算缩放比例（canvas像素/体素数），保证体素单位1映射canvas对应像素
   const scaleX = canvasWidth / extentI;
   const scaleY = canvasHeight / extentJ;
 
-  const xCanvas = canvasWidth / 2 + xNorm * scaleX;
-  const yCanvas = canvasHeight / 2 - yNorm * scaleY;
+  // 映射为canvas坐标，y方向反转是因为canvas坐标系y向下
+  const xCanvas = canvasWidth / 2 + deltaI * scaleX;
+  const yCanvas = canvasHeight / 2 - deltaJ * scaleY;
 
   return [xCanvas, yCanvas];
 }
+
 
 
 export function imageToCanvas1 (imageCoord, canvasWidth, canvasHeight, dims, spacing) {
