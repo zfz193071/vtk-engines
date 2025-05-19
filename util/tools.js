@@ -187,36 +187,46 @@ export function intersectRayAABB (origin, dir, bounds) {
 // 把 image 坐标（ijk）转为 canvas 坐标
 export function imageToCanvas (imageCoord, viewport, lineAxes) {
   const canvas = viewport.container.querySelector('canvas');
-  const [canvasWidth, canvasHeight] = [canvas.width, canvas.height];
+  const canvasWidth = canvas.width;
+  const canvasHeight = canvas.height;
 
   const imageData = viewport.imageData;
-  const dims = imageData.getDimensions(); // [x, y, z]
+  const dims = imageData.getDimensions();
+  const direction = imageData.getDirection();
 
   const [axisI, axisJ] = lineAxes;
-  const i = imageCoord[axisI];
-  const j = imageCoord[axisJ];
 
   const extentI = dims[axisI];
   const extentJ = dims[axisJ];
 
-  // 中心索引（体素索引，不是距离）
-  const centerI = extentI / 2;
-  const centerJ = extentJ / 2;
+  // 确保imageCoord在有效范围内（强制裁剪）
+  let i = Math.min(Math.max(imageCoord[axisI], 0), extentI - 1);
+  let j = Math.min(Math.max(imageCoord[axisJ], 0), extentJ - 1);
 
-  // 体素偏移量，相对于中心体素索引的偏移
-  const deltaI = i - centerI;
-  const deltaJ = j - centerJ;
+  // 方向矩阵的翻转判断（只针对对角元素负值）
+  const flipI = direction[axisI * 3 + axisI] < 0 ? -1 : 1;
+  const flipJ = direction[axisJ * 3 + axisJ] < 0 ? -1 : 1;
 
-  // 计算缩放比例（canvas像素/体素数），保证体素单位1映射canvas对应像素
+  if (flipI === -1) i = extentI - 1 - i;
+  if (flipJ === -1) j = extentJ - 1 - j;
+
+  // 计算缩放比例
   const scaleX = canvasWidth / extentI;
   const scaleY = canvasHeight / extentJ;
 
-  // 映射为canvas坐标，y方向反转是因为canvas坐标系y向下
-  const xCanvas = canvasWidth / 2 + deltaI * scaleX;
-  const yCanvas = canvasHeight / 2 - deltaJ * scaleY;
+  // 注意canvas原点左上，y向下，所以j无需额外反转
+  const xCanvas = i * scaleX;
+  const yCanvas = j * scaleY;
 
-  return [xCanvas, yCanvas];
+  // 额外限制canvas坐标不超出边界
+  const xClamped = Math.min(Math.max(xCanvas, 0), canvasWidth);
+  const yClamped = Math.min(Math.max(yCanvas, 0), canvasHeight);
+
+  return [xClamped, yClamped];
 }
+
+
+
 
 
 

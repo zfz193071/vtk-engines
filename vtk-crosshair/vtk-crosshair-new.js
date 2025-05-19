@@ -10,14 +10,10 @@ const dom3d = document.getElementById("render_3d")
 
 
 const crossSectionState = {
-    // center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
-    // center: [-0.9, 10, 20],
-    // center: [-0.9, -2, 30],
     center: [-0.5, -20, 30],
-    // center: [20, 24, 35.9],
     planes: [
         { name: "transverse", normal: [0, 0, 1], viewUp: [0, -1, 0] },
-        { name: "coronal", normal: [0.7071, 0.7071, 0], viewUp: [0, 0, -1] },
+        { name: "coronal", normal: [0, 1, 0], viewUp: [0, 0, -1] },
         { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
     ]
 };
