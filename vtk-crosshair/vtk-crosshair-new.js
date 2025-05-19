@@ -1,6 +1,6 @@
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import LOCALDATA from "../util/loadLocalData.js";
-import { imageToCanvas, worldToImage, getImageCenterWorld } from "../util/tools.js";
+import { canvasToImage, imageToWorld, imageToCanvas, intersectRayAABB, worldToImage, getNewAxesFromPlane, getScalarRange, setMapperActor } from "../util/tools.js";
 
 // 三个容器dom
 const dom1 = document.getElementById("transverse-xy");
@@ -10,11 +10,14 @@ const dom3d = document.getElementById("render_3d")
 
 
 const crossSectionState = {
-    center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
+    // center: [-0.9015999999999735, -24.22059999999999, 58.101463076923075],
     // center: [-0.9, 10, 20],
+    // center: [-0.9, -2, 30],
+    center: [-0.5, -20, 30],
+    // center: [20, 24, 35.9],
     planes: [
         { name: "transverse", normal: [0, 0, 1], viewUp: [0, -1, 0] },
-        { name: "coronal", normal: [0, 1, 0], viewUp: [0, 0, -1] },
+        { name: "coronal", normal: [0.7071, 0.7071, 0], viewUp: [0, 0, -1] },
         { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
     ]
 };
@@ -40,6 +43,16 @@ crossSectionState.planes.forEach(plane => {
         renderer: null,
     };
 });
+
+// Object.defineProperty(crossSectionState, 'value', {
+//     get () {
+//         return this._value;
+//     },
+//     set (newValue) {
+//         this._value = newValue;
+//     }
+// });
+
 
 // 使用 world → image → canvas 显示线段
 function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
@@ -78,6 +91,14 @@ function drawAllCrossLines (center) {
         coronal: [0, 2],
         sagittal: [1, 2],
     };
+    const origin = [-140.908, -164.227, 2.71689];
+    const spacing = [0.5469, 0.5469, 5.538457307692307];
+    const extent = [0, 511, 0, 511, 0, 25];
+    const bounds = [
+        origin[0], origin[0] + spacing[0] * (extent[1] - extent[0]),
+        origin[1], origin[1] + spacing[1] * (extent[3] - extent[2]),
+        origin[2], origin[2] + spacing[2] * (extent[5] - extent[4]),
+    ];
 
     planeNames.forEach(target => {
         const viewport = viewports[target];
@@ -94,7 +115,7 @@ function drawAllCrossLines (center) {
         otherPlanes.forEach(otherName => {
             const otherPlane = crossSectionState.planes.find(p => p.name === otherName);
 
-            // 计算相交线方向（两法线的叉积）
+            // 计算相交线方向（叉积）
             const lineDir = [
                 targetNormal[1] * otherPlane.normal[2] - targetNormal[2] * otherPlane.normal[1],
                 targetNormal[2] * otherPlane.normal[0] - targetNormal[0] * otherPlane.normal[2],
@@ -108,42 +129,22 @@ function drawAllCrossLines (center) {
             }
 
             const normalizedDir = lineDir.map(d => d / magnitude);
-            const len = 150;
-            const imageCenter = getImageCenterWorld(viewport.imageData); // ← 加上这句
-            const worldP1 = imageCenter.map((c, i) => c - normalizedDir[i] * len);
-            const worldP2 = imageCenter.map((c, i) => c + normalizedDir[i] * len);
 
-            const color = lineColors[otherName]; // 使用另一个平面名称获取颜色
+            // center 必须是体积内的某点（world坐标），如果不是，请先转换
+
+            // 用射线与体积盒求交，获取真实端点
+            const intersectPts = intersectRayAABB(center, normalizedDir, bounds);
+            if (!intersectPts) {
+                console.warn(`No intersection between line and volume bounds for ${target} ∩ ${otherName}`);
+                return;
+            }
+            const [worldP1, worldP2] = intersectPts;
+
+            const color = lineColors[otherName];
             drawProjectedLineInCanvas(viewport, worldP1, worldP2, color);
         });
-
     });
-}
 
-
-
-// 根据法向量与viewUp生成局部坐标轴
-function getNewAxesFromPlane (center, normal, viewUp) {
-    const zLen = Math.hypot(...normal);
-    const newZ = normal.map(n => n / zLen);
-
-    const dot = viewUp[0] * newZ[0] + viewUp[1] * newZ[1] + viewUp[2] * newZ[2];
-    const proj = newZ.map(n => n * dot);
-    const rawY = [
-        viewUp[0] - proj[0],
-        viewUp[1] - proj[1],
-        viewUp[2] - proj[2],
-    ];
-    const yLen = Math.hypot(...rawY);
-    const newY = rawY.map(n => n / yLen);
-
-    const newX = [
-        newY[1] * newZ[2] - newY[2] * newZ[1],
-        newY[2] * newZ[0] - newY[0] * newZ[2],
-        newY[0] * newZ[1] - newY[1] * newZ[0],
-    ];
-
-    return { newX, newY, newZ, newCenter: center };
 }
 
 // 支持任意方向相机摆放逻辑
@@ -166,48 +167,6 @@ function setCamera (camera, newZ, newY, center, size) {
     camera.orthogonalizeViewUp();
 }
 
-function setMapperActor (mapper, scalarRange, ww, wl, vtk) {
-    const [minScalar, maxScalar] = scalarRange;
-    if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
-        wl = (maxScalar + minScalar) / 2;
-        ww = (maxScalar - minScalar) / 2;
-    }
-
-    const rangeMin = wl - ww * 2;
-    const rangeMax = wl + ww * 2;
-
-    const ctfun = vtk.Rendering.Core.vtkColorTransferFunction.newInstance();
-    ctfun.removeAllPoints();
-    ctfun.addRGBPoint(rangeMin, 0.0, 0.0, 0.0);
-    ctfun.addRGBPoint(wl - ww / 2, 0.3, 0.3, 0.3);
-    ctfun.addRGBPoint(wl, 1.0, 1.0, 1.0);
-    ctfun.addRGBPoint(wl + ww / 2, 1.0, 1.0, 1.0);
-    ctfun.addRGBPoint(rangeMax, 1.0, 1.0, 1.0);
-
-    const ofun = vtk.Common.DataModel.vtkPiecewiseFunction.newInstance();
-    ofun.removeAllPoints();
-    ofun.addPoint(rangeMin, 0.0);
-    ofun.addPoint(wl - ww / 2, 0.15);
-    ofun.addPoint(wl, 0.6);
-    ofun.addPoint(wl + ww / 2, 1.0);
-    ofun.addPoint(rangeMax, 1.0);
-
-    const volumeProperty = vtk.Rendering.Core.vtkVolumeProperty.newInstance();
-    volumeProperty.setInterpolationTypeToLinear();
-    volumeProperty.setRGBTransferFunction(0, ctfun);
-    volumeProperty.setScalarOpacity(0, ofun);
-    volumeProperty.setShade(false);
-    volumeProperty.setAmbient(0.2);
-    volumeProperty.setDiffuse(0.7);
-    volumeProperty.setSpecular(0.0);
-
-    const volumeActor = vtk.Rendering.Core.vtkVolume.newInstance();
-    volumeActor.setMapper(mapper);
-    volumeActor.setProperty(volumeProperty);
-
-    return volumeActor;
-}
-
 function initViewport (viewport) {
     const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
         rootContainer: viewport.container,
@@ -224,20 +183,38 @@ function initViewport (viewport) {
         const rect = viewport.container.getBoundingClientRect();
         canvas.width = rect.width;
         canvas.height = rect.height;
+
+        canvas.addEventListener('click', event => {
+            const canvasX = event.clientX - rect.left;
+            const canvasY = event.clientY - rect.top;
+
+            // 反算出图像坐标
+            const [i, j] = viewport.axisMap;
+
+            // 反转 canvas → image
+            const imageCoord = canvasToImage(canvasX, canvasY, viewport, viewport.axisMap);
+
+            // 重构完整 image 坐标
+            const imageIndex = [0, 0, 0];
+            imageIndex[i] = imageCoord[0];
+            imageIndex[j] = imageCoord[1];
+            // 第三个轴使用当前 crossSectionState.center 上的 image 坐标
+            const centerImageCoord = worldToImage(viewport.imageData, crossSectionState.center);
+            const k = [0, 1, 2].filter(a => a !== i && a !== j)[0];
+            imageIndex[k] = centerImageCoord[k];
+
+            // 转换成 world 坐标
+            const worldCoord = imageToWorld(viewport.imageData, imageIndex);
+
+            // 更新中心点
+            crossSectionState.center = worldCoord;
+
+            // ✅ 重新绘制投影线
+            drawAllCrossLines(worldCoord);
+        });
     }
 }
 
-
-function getScalarRange (scalars) {
-    let min = Infinity;
-    let max = -Infinity;
-    for (let i = 0; i < scalars.length; i++) {
-        const val = scalars[i];
-        if (val < min) min = val;
-        if (val > max) max = val;
-    }
-    return [min, max];
-}
 
 function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp, center, scalarRange, thickness = 1.0) {
     const renderer = viewport.renderer;

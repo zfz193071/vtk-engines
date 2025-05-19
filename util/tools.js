@@ -46,10 +46,10 @@ export function worldToImage (imageData, worldCoord) {
   const origin = imageData.getOrigin();
   const spacing = imageData.getSpacing();
   const dir = imageData.getDirection();
-  console.log('test origin: ', origin);
-  console.log('test spacing: ', spacing);
-  console.log('test dir: ', dir);
-  console.log('test extent: ', imageData.getExtent());
+  // console.log('test origin: ', origin);
+  // console.log('test spacing: ', spacing);
+  // console.log('test dir: ', dir);
+  // console.log('test extent: ', imageData.getExtent());
   // console.log('test dims: ', imageData.getDimensions());
   // console.log('test spacing: ', imageData.getSpacing());
 
@@ -152,7 +152,37 @@ export function getImageCenterWorld (imageData) {
     origin[2] + Ds[2],
   ];
 }
+// 计算射线与AABB盒子相交的函数，返回两个交点，或者null
+export function intersectRayAABB (origin, dir, bounds) {
+  // 方向向量的倒数，避免除零
+  const invDir = dir.map(d => (Math.abs(d) < 1e-10 ? 1e10 : 1 / d));
 
+  const tmin = (bounds[0] - origin[0]) * invDir[0];
+  const tmax = (bounds[1] - origin[0]) * invDir[0];
+  const tymin = (bounds[2] - origin[1]) * invDir[1];
+  const tymax = (bounds[3] - origin[1]) * invDir[1];
+  const tzmin = (bounds[4] - origin[2]) * invDir[2];
+  const tzmax = (bounds[5] - origin[2]) * invDir[2];
+
+  const t1 = Math.min(tmin, tmax);
+  const t2 = Math.max(tmin, tmax);
+  const ty1 = Math.min(tymin, tymax);
+  const ty2 = Math.max(tymin, tymax);
+  const tz1 = Math.min(tzmin, tzmax);
+  const tz2 = Math.max(tzmin, tzmax);
+
+  const tEnter = Math.max(t1, ty1, tz1);
+  const tExit = Math.min(t2, ty2, tz2);
+
+  if (tEnter > tExit || tExit < 0) {
+    // 不相交
+    return null;
+  }
+
+  const pEnter = origin.map((o, i) => o + dir[i] * tEnter);
+  const pExit = origin.map((o, i) => o + dir[i] * tExit);
+  return [pEnter, pExit];
+}
 
 // 把 image 坐标（ijk）转为 canvas 坐标
 export function imageToCanvas (imageCoord, viewport, lineAxes) {
@@ -220,3 +250,106 @@ export function imageToCanvas1 (imageCoord, canvasWidth, canvasHeight, dims, spa
 
   return [xCanvas, yCanvas];
 }
+// 根据法向量与viewUp生成局部坐标轴
+export function getNewAxesFromPlane (center, normal, viewUp) {
+  const zLen = Math.hypot(...normal);
+  const newZ = normal.map(n => n / zLen);
+
+  const dot = viewUp[0] * newZ[0] + viewUp[1] * newZ[1] + viewUp[2] * newZ[2];
+  const proj = newZ.map(n => n * dot);
+  const rawY = [
+    viewUp[0] - proj[0],
+    viewUp[1] - proj[1],
+    viewUp[2] - proj[2],
+  ];
+  const yLen = Math.hypot(...rawY);
+  const newY = rawY.map(n => n / yLen);
+
+  const newX = [
+    newY[1] * newZ[2] - newY[2] * newZ[1],
+    newY[2] * newZ[0] - newY[0] * newZ[2],
+    newY[0] * newZ[1] - newY[1] * newZ[0],
+  ];
+
+  return { newX, newY, newZ, newCenter: center };
+}
+export function setMapperActor (mapper, scalarRange, ww, wl, vtk) {
+  const [minScalar, maxScalar] = scalarRange;
+  if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
+    wl = (maxScalar + minScalar) / 2;
+    ww = (maxScalar - minScalar) / 2;
+  }
+
+  const rangeMin = wl - ww * 2;
+  const rangeMax = wl + ww * 2;
+
+  const ctfun = vtk.Rendering.Core.vtkColorTransferFunction.newInstance();
+  ctfun.removeAllPoints();
+  ctfun.addRGBPoint(rangeMin, 0.0, 0.0, 0.0);
+  ctfun.addRGBPoint(wl - ww / 2, 0.3, 0.3, 0.3);
+  ctfun.addRGBPoint(wl, 1.0, 1.0, 1.0);
+  ctfun.addRGBPoint(wl + ww / 2, 1.0, 1.0, 1.0);
+  ctfun.addRGBPoint(rangeMax, 1.0, 1.0, 1.0);
+
+  const ofun = vtk.Common.DataModel.vtkPiecewiseFunction.newInstance();
+  ofun.removeAllPoints();
+  ofun.addPoint(rangeMin, 0.0);
+  ofun.addPoint(wl - ww / 2, 0.15);
+  ofun.addPoint(wl, 0.6);
+  ofun.addPoint(wl + ww / 2, 1.0);
+  ofun.addPoint(rangeMax, 1.0);
+
+  const volumeProperty = vtk.Rendering.Core.vtkVolumeProperty.newInstance();
+  volumeProperty.setInterpolationTypeToLinear();
+  volumeProperty.setRGBTransferFunction(0, ctfun);
+  volumeProperty.setScalarOpacity(0, ofun);
+  volumeProperty.setShade(false);
+  volumeProperty.setAmbient(0.2);
+  volumeProperty.setDiffuse(0.7);
+  volumeProperty.setSpecular(0.0);
+
+  const volumeActor = vtk.Rendering.Core.vtkVolume.newInstance();
+  volumeActor.setMapper(mapper);
+  volumeActor.setProperty(volumeProperty);
+
+  return volumeActor;
+}
+
+export function getScalarRange (scalars) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < scalars.length; i++) {
+    const val = scalars[i];
+    if (val < min) min = val;
+    if (val > max) max = val;
+  }
+  return [min, max];
+}
+export function canvasToImage (x, y, viewport, axisMap) {
+  const canvas = viewport.container.querySelector('canvas');
+  const dims = viewport.imageData.getDimensions();
+  const spacing = viewport.imageData.getSpacing();
+
+  const imageWidth = dims[axisMap[0]];
+  const imageHeight = dims[axisMap[1]];
+
+  const scaleX = imageWidth / canvas.width;
+  const scaleY = imageHeight / canvas.height;
+
+  const i = x * scaleX;
+  const j = y * scaleY;
+
+  return [i, j];
+}
+
+export function imageToWorld (imageData, ijk) {
+  const spacing = imageData.getSpacing();
+  const origin = imageData.getOrigin();
+
+  return [
+    origin[0] + ijk[0] * spacing[0],
+    origin[1] + ijk[1] * spacing[1],
+    origin[2] + ijk[2] * spacing[2],
+  ];
+}
+

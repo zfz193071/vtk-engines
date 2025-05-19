@@ -24,8 +24,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        z-index: 10;             /* 保证canvas在vtk画布之上 */
-        pointer-events: none;    /* 允许鼠标事件穿透 */
+        z-index: 10;
       }
 
       .viewport .viewport_div {
@@ -89,15 +88,12 @@
     <div class="content">
       <div class="viewport" id="transverse-xy">
         <canvas class="viewport_canvas"></canvas>
-        <div class="viewport_div"></div>
       </div>
       <div class="viewport" id="coronal-xz">
         <canvas class="viewport_canvas"></canvas>
-        <div class="viewport_div"></div>
       </div>
       <div class="viewport" id="sagittal-yz">
         <canvas class="viewport_canvas"></canvas>
-        <div class="viewport_div"></div>
       </div>
     </div>
     <div class="content2">
@@ -152,6 +148,36 @@
             </div>
             
           </div>
+        </fieldset>
+        <fieldset class="opt-area">
+          <legend>Update View :</legend>
+          <div>
+            <label>Center X: <input type="number" id="centerX" value="-0.9" step="0.1"></label>
+            <label>Center Y: <input type="number" id="centerY" value="-24.2" step="0.1"></label>
+            <label>Center Z: <input type="number" id="centerZ" value="58.1" step="0.1"></label>
+            <button onclick="updateCenter()">Update Center</button>
+          </div>
+          <!-- 修改 transverse 的 normal 和 viewUp -->
+          <div id="transverse-controls">
+            <h4>Transverse</h4>
+            Normal: <input type="text" id="transverse-normal" value="0,0,1"><br>
+            ViewUp: <input type="text" id="transverse-viewup" value="0,-1,0"><br>
+          </div>
+
+          <div id="coronal-controls">
+            <h4>Coronal</h4>
+            Normal: <input type="text" id="coronal-normal" value="0,1,0"><br>
+            ViewUp: <input type="text" id="coronal-viewup" value="0,0,-1"><br>
+          </div>
+
+          <div id="sagittal-controls">
+            <h4>Sagittal</h4>
+            Normal: <input type="text" id="sagittal-normal" value="1,0,0"><br>
+            ViewUp: <input type="text" id="sagittal-viewup" value="0,0,-1"><br>
+          </div>
+
+          <button onclick="applyVectorChanges()">Apply Changes</button>
+
         </fieldset>
         <fieldset class="opt-area">
           <legend>Para Set :</legend>
@@ -214,11 +240,60 @@
     //监听值变化
     document.querySelector(".para-set-group").addEventListener("change",changeParaSet)
 
-    
+    // const crossSectionState = {
+    //   _value: {
+    //     center: [0, 0, 0],
+    //     planes: [
+    //       { name: 'transverse', normal: [0, 0, 1], viewUp: [0, -1, 0] },
+    //       { name: 'coronal', normal: [0, 1, 0], viewUp: [0, 0, -1] },
+    //       { name: 'sagittal', normal: [1, 0, 0], viewUp: [0, 0, -1] },
+    //     ]
+    //   }
+    // };
+
+    // function updateCenter() {
+    //   const x = parseFloat(document.getElementById('centerX').value);
+    //   const y = parseFloat(document.getElementById('centerY').value);
+    //   const z = parseFloat(document.getElementById('centerZ').value);
+
+    //   crossSectionState._value.center = [x, y, z];
+    //   console.log('Updated center:', crossSectionState._value.center);
+
+    //   // 如果有需要重新渲染的逻辑，可以放这里
+    // }
+    // function parseVector(inputId) {
+    //   const input = document.getElementById(inputId).value;
+    //   return input.split(',').map(n => parseFloat(n.trim()));
+    // }
+
+    // function applyVectorChanges() {
+    //   const planes = [
+    //     {
+    //       name: 'transverse',
+    //       normal: parseVector('transverse-normal'),
+    //       viewUp: parseVector('transverse-viewup'),
+    //     },
+    //     {
+    //       name: 'coronal',
+    //       normal: parseVector('coronal-normal'),
+    //       viewUp: parseVector('coronal-viewup'),
+    //     },
+    //     {
+    //       name: 'sagittal',
+    //       normal: parseVector('sagittal-normal'),
+    //       viewUp: parseVector('sagittal-viewup'),
+    //     },
+    //   ];
+
+    //   crossSectionState._value.planes = planes;
+    //   console.log('Updated planes:', crossSectionState._value.planes);
+    // }
+
+
   </script>
-  <script src="https://cdn.jsdelivr.net/npm/gl-matrix@3.4.3/gl-matrix.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
-  <script src="https://unpkg.com/vtk.js@33.0.2/vtk.js"></script>
+  <script src="../util/gl-matrix.js"></script>
+  <script src="../util/axios.min.js"></script>
+  <script src="../util/vtk.js"></script>
   <script src="../public/js/dicomParser.min.js"></script>
 
 
