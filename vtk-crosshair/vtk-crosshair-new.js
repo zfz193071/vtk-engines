@@ -4,10 +4,16 @@ const { vec3 } = glMatrix
 import { canvasToImage, imageToWorld, imageToCanvas, getLineWithinBounds, getAxisMapFromCamera, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
 
 // 三个容器dom
+const contents = document.getElementsByClassName("content")
 const dom1 = document.getElementById("transverse-xy");
 const dom2 = document.getElementById("coronal-xz");
 const dom3 = document.getElementById("sagittal-yz");
 const dom3d = document.getElementById("render_3d")
+
+const widthC = Math.round(contents[0].clientWidth / 3) - 2
+const heightC = contents[0].clientHeight - 2
+
+const rangeSize = [widthC, heightC]
 
 
 const crossSectionState = {
@@ -162,8 +168,7 @@ function drawAllCrossLines (center) {
 
 
 // 支持任意方向相机摆放逻辑
-function setCamera (camera, newZ, newY, center, size) {
-    const viewSize = Math.max(size[0], size[1], size[2]);
+function setCamera (camera, newZ, newY, center, size, viewportSize) {
     const diagonal = Math.sqrt(size[0] ** 2 + size[1] ** 2 + size[2] ** 2);
     const distance = diagonal * 1.5;
 
@@ -173,13 +178,18 @@ function setCamera (camera, newZ, newY, center, size) {
         center[2] + newZ[2] * distance,
     ];
 
+    const [w, h] = viewportSize;
+    const spacing = Math.max(size[0] / w, size[1] / h);
+    const scale = spacing * Math.max(w, h) / 2;
+
     camera.setParallelProjection(true);
-    camera.setParallelScale(viewSize); // 可微调比例
+    camera.setParallelScale(scale); // 自动适配视口
     camera.setFocalPoint(...center);
     camera.setPosition(...position);
     camera.setViewUp(...newY);
     camera.orthogonalizeViewUp();
 }
+
 
 function initViewport (viewport) {
     const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
@@ -192,11 +202,16 @@ function initViewport (viewport) {
     viewport.renderer = fullScreenRenderer.getRenderer();
     viewport.renderWindow = fullScreenRenderer.getRenderWindow();
 
+    const container = viewport.container;
+    container.style.width = rangeSize[0] + 'px';
+    container.style.height = rangeSize[1] + 'px';
+
     const canvas = viewport.container.querySelector('canvas');
     if (canvas) {
-        const rect = viewport.container.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
+        canvas.width = rangeSize[0]
+        canvas.height = rangeSize[1];
+        viewport.container.querySelector('div').style.width = rangeSize[0] + 'px';
+        viewport.container.querySelector('div').style.height = rangeSize[1] + 'px';
 
         // canvas.addEventListener('click', event => {
         //     const canvasX = event.clientX - rect.left;
@@ -229,7 +244,6 @@ function initViewport (viewport) {
     }
 }
 
-
 function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp, center, scalarRange, thickness = 1.0) {
     const renderer = viewport.renderer;
     const camera = renderer.getActiveCamera();
@@ -242,7 +256,9 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
         bounds[3] - bounds[2],
         bounds[5] - bounds[4],
     ];
-    setCamera(camera, newZ, newY, newCenter, size);
+    const viewportSize = [rangeSize[0], rangeSize[1]];
+    setCamera(camera, newZ, newY, newCenter, size, viewportSize);
+
     console.log('当前视图对应切片 index：', imageData.worldToIndex(center));
 
 
@@ -280,6 +296,7 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
     renderer.removeAllViewProps();
     renderer.addVolume(volumeActor);
     renderer.resetCameraClippingRange();
+    renderer.resetCamera();
     viewport.renderWindow.render();
 }
 
@@ -399,20 +416,22 @@ async function start () {
         );
     });
 
+
+
+
+    // const testImageCoord = worldToImage(imageData, center);
+    // console.log("test1 testImageCoord: ", testImageCoord);
+    // const testCanvasCoord = imageToCanvas(testImageCoord, viewports.transverse, [0, 1]);
+    // console.log("test1 testCanvasCoord: ", testCanvasCoord);
+    // console.log("test1 image w : ", testCanvasCoord[0], testCanvasCoord[1]);
+    drawAllCrossLines(center);
+
     const diagonal = Math.sqrt(size[0] ** 2 + size[1] ** 2 + size[2] ** 2);
     camera3D.setFocalPoint(...center);
     camera3D.setPosition(center[0] + diagonal, center[1] + diagonal, center[2] + diagonal);
     camera3D.setViewUp(0, 0, 1);
     renderer3D.resetCamera();
     renderWindow3D.render();
-
-
-    const testImageCoord = worldToImage(imageData, center);
-    console.log("test1 testImageCoord: ", testImageCoord);
-    const testCanvasCoord = imageToCanvas(testImageCoord, viewports.transverse, [0, 1]);
-    console.log("test1 testCanvasCoord: ", testCanvasCoord);
-    console.log("test1 image w : ", testCanvasCoord[0], testCanvasCoord[1]);
-    drawAllCrossLines(center);
 }
 
 
