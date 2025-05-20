@@ -1,7 +1,7 @@
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import LOCALDATA from "../util/loadLocalData.js";
 const { vec3 } = glMatrix
-import { canvasToImage, imageToWorld, imageToCanvas, getLineWithinBounds, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
+import { canvasToImage, imageToWorld, imageToCanvas, getLineWithinBounds, getAxisMapFromCamera, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
 
 // 三个容器dom
 const dom1 = document.getElementById("transverse-xy");
@@ -56,12 +56,14 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
     console.log("test viewport plane: ", viewport.plane.name);
     console.log('test worldcoord: ', worldP1, worldP2);
 
+
     const imageData = viewport.imageData;
     const canvas = viewport.container.querySelector('canvas');
     const ctx = canvas.getContext('2d');
 
     const imageP1 = worldToImage(imageData, worldP1);
     const imageP2 = worldToImage(imageData, worldP2);
+
 
     console.log("test Image imageP1 imageP2: ", imageP1, imageP2);
     console.log("test axisMap: ", viewport.axisMap);
@@ -71,6 +73,16 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
 
     console.log("test canvas x1, y1, x2, y2: ", x1, y1, x2, y2);
 
+
+    console.log('drawProjectedLineInCanvas');
+    console.log('  worldP1:', worldP1);
+    console.log('  worldP2:', worldP2);
+    console.log('  imageP1:', imageP1);
+    console.log('  imageP2:', imageP2);
+    console.log('  axisMap:', viewport.axisMap);
+    console.log('  canvasPos1:', x1, y1);
+    console.log('  canvasPos2:', x2, y2);
+
     ctx.save();
     ctx.lineWidth = 1;
     ctx.strokeStyle = color;
@@ -78,121 +90,11 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
+    ctx.restore();
 
-    const offsetDistance = 40; // 以 canvas 像素为单位，调整这个值控制距离
-    const dx = x1 - x2;
-    const dy = y1 - y2;
-    const length = Math.sqrt(dx * dx + dy * dy);
 
-    // 归一化方向向量，防止长度为0
-    const ux = length === 0 ? 0 : dx / length;
-    const uy = length === 0 ? 0 : dy / length;
-
-    // 计算偏移点坐标
-    const dotX = x2 + ux * offsetDistance;
-    const dotY = y2 + uy * offsetDistance;
-
-    // 画圆点
-    // ctx.beginPath();
-    // ctx.arc(dotX, dotY, 6, 0, 2 * Math.PI);
-    // ctx.fillStyle = color;
-    // ctx.fill();
-    // ctx.restore();
-    // registerDraggablePoint(viewport, { x: x2, y: y2 }, worldP2, color);
 }
 
-function registerDraggablePoint (viewport, screenPos, worldPos, color, targetViewportType) {
-    const canvas = viewport.container.querySelector('canvas');
-    const rect = canvas.getBoundingClientRect();
-
-    const state = {
-        dragging: false,
-        startScreen: null,
-        startWorld: null,
-        viewport,
-        color,
-    };
-
-    const onMouseDown = (e) => {
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const dx = x - screenPos.x;
-        const dy = y - screenPos.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < 8) { // 可调距离
-            state.dragging = true;
-            state.startScreen = [x, y];
-            state.startWorld = [...worldPos];
-        }
-    };
-
-    const onMouseMove = (e) => {
-        if (!state.dragging) return;
-
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        const [i, j] = viewport.axisMap;
-        const imageCoord = canvasToImage(x, y, viewport, viewport.axisMap);
-        const imageIndex = [0, 0, 0];
-        imageIndex[i] = imageCoord[0];
-        imageIndex[j] = imageCoord[1];
-
-        const centerImageCoord = worldToImage(viewport.imageData, crossSectionState.center);
-        const k = [0, 1, 2].filter(a => a !== i && a !== j)[0];
-        imageIndex[k] = centerImageCoord[k];
-
-        const newWorld = imageToWorld(viewport.imageData, imageIndex);
-
-        const v1 = vec3.sub([], state.startWorld, crossSectionState.center);
-        const v2 = vec3.sub([], newWorld, crossSectionState.center);
-
-        const axis = vec3.cross([], v1, v2);
-        const angle = vec3.angle(v1, v2);
-
-        if (vec3.length(axis) < 1e-6 || angle === 0) {
-            return;
-        }
-
-        vec3.normalize(axis, axis);
-
-        // ✅ 获取目标类型的 viewport（而非事件 viewport）
-        const targetViewport = getViewportByType(targetViewportType);
-        const targetPlane = targetViewport.plane;
-
-        // ✅ 计算旋转后的法向量和 up 向量
-        const newNormal = rotateVector(targetPlane.normal, axis, angle);
-        const newViewUp = rotateVector(targetPlane.viewUp, axis, angle);
-
-        // ✅ 更新 plane（仅角度变化，不更新 center）
-        targetPlane.normal = newNormal;
-        targetPlane.viewUp = newViewUp;
-
-        crossSectionState.plane = targetPlane; // 如果有用到可以保留
-
-        setVolumeWithCrossSection(
-            targetViewport,
-            targetViewport.imageData,
-            targetPlane.ww,
-            targetPlane.wl,
-            newNormal,
-            newViewUp,
-            crossSectionState.center,
-            targetViewport.scalarRange
-        );
-
-        drawAllCrossLines(crossSectionState.center); // 重绘线
-    };
-
-    const onMouseUp = () => {
-        state.dragging = false;
-    };
-
-    canvas.addEventListener('mousedown', onMouseDown);
-    canvas.addEventListener('mousemove', onMouseMove);
-    canvas.addEventListener('mouseup', onMouseUp);
-}
 
 function drawAllCrossLines (center) {
     const planeNames = ['transverse', 'coronal', 'sagittal'];
@@ -201,22 +103,22 @@ function drawAllCrossLines (center) {
         coronal: [0, 2],
         sagittal: [1, 2],
     };
-    // const origin = [-140.908, -164.227, 2.71689];
-    // const spacing = [0.5469, 0.5469, 5.538457307692307];
-    // const extent = [0, 511, 0, 511, 0, 25];
-    // const bounds = [
-    //     origin[0], origin[0] + spacing[0] * (extent[1] - extent[0]),
-    //     origin[1], origin[1] + spacing[1] * (extent[3] - extent[2]),
-    //     origin[2], origin[2] + spacing[2] * (extent[5] - extent[4]),
-    // ];
+    const origin = [-140.908, -164.227, 2.71689];
+    const spacing = [0.5469, 0.5469, 5.538457307692307];
+    const extent = [0, 511, 0, 511, 0, 25];
+    const bounds = [
+        origin[0], origin[0] + spacing[0] * (extent[1] - extent[0]),
+        origin[1], origin[1] + spacing[1] * (extent[3] - extent[2]),
+        origin[2], origin[2] + spacing[2] * (extent[5] - extent[4]),
+    ];
 
     // const bounds = imageData.getBounds(); // 放在最外层，只计算一次
 
     planeNames.forEach(target => {
         const viewport = viewports[target];
-        const bounds = viewport.imageData.getBounds();
         viewport.plane = crossSectionState.planes.find(p => p.name === target);
         viewport.axisMap = axisMapLookup[target];
+        console.log("test new axisMap: ", viewport.axisMap);
 
         const canvas = viewport.container.querySelector('canvas');
         const ctx = canvas.getContext('2d');
@@ -505,6 +407,11 @@ async function start () {
     renderWindow3D.render();
 
 
+    const testImageCoord = worldToImage(imageData, center);
+    console.log("test1 testImageCoord: ", testImageCoord);
+    const testCanvasCoord = imageToCanvas(testImageCoord, viewports.transverse, [0, 1]);
+    console.log("test1 testCanvasCoord: ", testCanvasCoord);
+    console.log("test1 image w : ", testCanvasCoord[0], testCanvasCoord[1]);
     drawAllCrossLines(center);
 }
 

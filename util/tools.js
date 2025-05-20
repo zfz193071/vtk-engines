@@ -51,7 +51,7 @@ export function getLineWithinBounds (center, dir, bounds) {
     const origin = center[i];
     const d = dir[i];
 
-    if (Math.abs(d) < 1e-6) continue; // 方向在该轴上无分量，无需处理
+    if (Math.abs(d) < 1e-6) continue;
 
     const t1 = (bounds[i * 2] - origin) / d;
     const t2 = (bounds[i * 2 + 1] - origin) / d;
@@ -64,13 +64,39 @@ export function getLineWithinBounds (center, dir, bounds) {
   }
 
   if (minT > maxT) {
-    return null; // 方向向量根本不在体积内穿过
+    return null;
   }
 
-  const p1 = center.map((c, i) => c + dir[i] * minT);
-  const p2 = center.map((c, i) => c + dir[i] * maxT);
+  // 修复：确保返回的线段以 center 为中点，方向对称展开
+  const halfLength = Math.min(maxT, -minT);
+  const p1 = center.map((c, i) => c - dir[i] * halfLength);
+  const p2 = center.map((c, i) => c + dir[i] * halfLength);
   return [p1, p2];
 }
+
+
+export function getAxisMapFromCamera (viewport) {
+  const camera = viewport.renderer.getActiveCamera();
+  const viewPlaneNormal = camera.getDirectionOfProjection(); // 朝向
+  const viewUp = camera.getViewUp(); // 上方向
+
+  // 找到 viewUp 最接近 image 坐标系哪个轴
+  const absViewUp = viewUp.map(Math.abs);
+  const upIndex = absViewUp.indexOf(Math.max(...absViewUp));
+
+  // canvas 的 y 对应于 image 的哪个轴
+  // canvas 的 x 是垂直于 viewPlaneNormal 和 viewUp 的方向
+  const right = [
+    viewPlaneNormal[1] * viewUp[2] - viewPlaneNormal[2] * viewUp[1],
+    viewPlaneNormal[2] * viewUp[0] - viewPlaneNormal[0] * viewUp[2],
+    viewPlaneNormal[0] * viewUp[1] - viewPlaneNormal[1] * viewUp[0],
+  ];
+  const absRight = right.map(Math.abs);
+  const rightIndex = absRight.indexOf(Math.max(...absRight));
+
+  return [rightIndex, upIndex]; // [canvasX, canvasY]
+}
+
 
 export function worldToImage (imageData, worldCoord) {
   const origin = imageData.getOrigin();
@@ -233,9 +259,9 @@ export function imageToCanvas (imageCoord, viewport, lineAxes) {
   const extentI = dims[axisI];
   const extentJ = dims[axisJ];
 
-  // 确保imageCoord在有效范围内（强制裁剪）
-  let i = Math.min(Math.max(imageCoord[axisI], 0), extentI - 1);
-  let j = Math.min(Math.max(imageCoord[axisJ], 0), extentJ - 1);
+  // 原始坐标（不裁剪）
+  let i = imageCoord[axisI];
+  let j = imageCoord[axisJ];
 
   // 方向矩阵的翻转判断（只针对对角元素负值）
   const flipI = direction[axisI * 3 + axisI] < 0 ? -1 : 1;
@@ -244,20 +270,20 @@ export function imageToCanvas (imageCoord, viewport, lineAxes) {
   if (flipI === -1) i = extentI - 1 - i;
   if (flipJ === -1) j = extentJ - 1 - j;
 
-  // 计算缩放比例
+  // 计算缩放比例（按像素比例）
   const scaleX = canvasWidth / extentI;
   const scaleY = canvasHeight / extentJ;
 
-  // 注意canvas原点左上，y向下，所以j无需额外反转
-  const xCanvas = i * scaleX;
-  const yCanvas = j * scaleY;
+  // 图像中心对应 canvas 中心
+  const tempX = (i - extentI / 2) * scaleX;
+  const tempY = (j - extentJ / 2) * scaleY;
 
-  // 额外限制canvas坐标不超出边界
-  const xClamped = Math.min(Math.max(xCanvas, 0), canvasWidth);
-  const yClamped = Math.min(Math.max(yCanvas, 0), canvasHeight);
+  const xCanvas = tempX + canvasWidth / 2;
+  const yCanvas = tempY + canvasHeight / 2;
 
-  return [xClamped, yClamped];
+  return [xCanvas, yCanvas];
 }
+
 
 
 export function rotateVector (vec, axis, angle) {
