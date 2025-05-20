@@ -210,6 +210,7 @@ function initViewport (viewport) {
     if (canvas) {
         canvas.width = rangeSize[0]
         canvas.height = rangeSize[1];
+        const rect = viewport.container.getBoundingClientRect();
         viewport.container.querySelector('div').style.width = rangeSize[0] + 'px';
         viewport.container.querySelector('div').style.height = rangeSize[1] + 'px';
 

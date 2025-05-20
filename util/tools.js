@@ -102,12 +102,12 @@ export function worldToImage (imageData, worldCoord) {
   const origin = imageData.getOrigin();
   const spacing = imageData.getSpacing();
   const dir = imageData.getDirection();
-  console.log('test origin: ', origin);
-  console.log('test spacing: ', spacing);
-  console.log('test dir: ', dir);
-  console.log('test extent: ', imageData.getExtent());
-  console.log('test dims: ', imageData.getDimensions());
-  console.log('test spacing: ', imageData.getSpacing());
+  // console.log('test origin: ', origin);
+  // console.log('test spacing: ', spacing);
+  // console.log('test dir: ', dir);
+  // console.log('test extent: ', imageData.getExtent());
+  // console.log('test dims: ', imageData.getDimensions());
+  // console.log('test spacing: ', imageData.getSpacing());
 
   // 按列顺序重建方向矩阵（列主序解构）
   const D = [
@@ -259,30 +259,44 @@ export function imageToCanvas (imageCoord, viewport, lineAxes) {
   const extentI = dims[axisI];
   const extentJ = dims[axisJ];
 
-  // 原始坐标（不裁剪）
   let i = imageCoord[axisI];
   let j = imageCoord[axisJ];
 
-  // 方向矩阵的翻转判断（只针对对角元素负值）
   const flipI = direction[axisI * 3 + axisI] < 0 ? -1 : 1;
   const flipJ = direction[axisJ * 3 + axisJ] < 0 ? -1 : 1;
 
   if (flipI === -1) i = extentI - 1 - i;
   if (flipJ === -1) j = extentJ - 1 - j;
 
-  // 计算缩放比例（按像素比例）
-  const scaleX = canvasWidth / extentI;
-  const scaleY = canvasHeight / extentJ;
+  // 图像实际比例
+  const imageAspect = extentI / extentJ;
+  const canvasAspect = canvasWidth / canvasHeight;
 
-  // 图像中心对应 canvas 中心
-  const tempX = (i - extentI / 2) * scaleX;
-  const tempY = (j - extentJ / 2) * scaleY;
+  // VTK渲染时是按最长边缩放，另一边留白填充
+  let scaleX, scaleY;
+  let offsetX = 0, offsetY = 0;
 
-  const xCanvas = tempX + canvasWidth / 2;
-  const yCanvas = tempY + canvasHeight / 2;
+  if (imageAspect > canvasAspect) {
+    // 图像太宽，横向撑满，高度留白
+    scaleX = canvasWidth / extentI;
+    scaleY = scaleX;
+    const imageDisplayHeight = extentJ * scaleY;
+    offsetY = (canvasHeight - imageDisplayHeight) / 2;
+  } else {
+    // 图像太高，纵向撑满，宽度留白
+    scaleY = canvasHeight / extentJ;
+    scaleX = scaleY;
+    const imageDisplayWidth = extentI * scaleX;
+    offsetX = (canvasWidth - imageDisplayWidth) / 2;
+  }
+
+  // 转为 canvas 坐标（考虑偏移）
+  const xCanvas = i * scaleX + offsetX;
+  const yCanvas = j * scaleY + offsetY;
 
   return [xCanvas, yCanvas];
 }
+
 
 
 
