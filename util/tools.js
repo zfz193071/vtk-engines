@@ -1,3 +1,4 @@
+const { vec3 } = glMatrix
 export function invert3x3 (m) {
   const a00 = m[0][0], a01 = m[0][1], a02 = m[0][2];
   const a10 = m[1][0], a11 = m[1][1], a12 = m[1][2];
@@ -41,17 +42,46 @@ export function multiplyMatVec (m, v) {
     m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
   ];
 }
+// 计算方向在体积内的最大正负延伸长度
+export function getLineWithinBounds (center, dir, bounds) {
+  let minT = -Infinity;
+  let maxT = Infinity;
+
+  for (let i = 0; i < 3; i++) {
+    const origin = center[i];
+    const d = dir[i];
+
+    if (Math.abs(d) < 1e-6) continue; // 方向在该轴上无分量，无需处理
+
+    const t1 = (bounds[i * 2] - origin) / d;
+    const t2 = (bounds[i * 2 + 1] - origin) / d;
+
+    const tMin = Math.min(t1, t2);
+    const tMax = Math.max(t1, t2);
+
+    minT = Math.max(minT, tMin);
+    maxT = Math.min(maxT, tMax);
+  }
+
+  if (minT > maxT) {
+    return null; // 方向向量根本不在体积内穿过
+  }
+
+  const p1 = center.map((c, i) => c + dir[i] * minT);
+  const p2 = center.map((c, i) => c + dir[i] * maxT);
+  return [p1, p2];
+}
 
 export function worldToImage (imageData, worldCoord) {
   const origin = imageData.getOrigin();
   const spacing = imageData.getSpacing();
   const dir = imageData.getDirection();
-  // console.log('test origin: ', origin);
-  // console.log('test spacing: ', spacing);
-  // console.log('test dir: ', dir);
-  // console.log('test extent: ', imageData.getExtent());
-  // console.log('test dims: ', imageData.getDimensions());
-  // console.log('test spacing: ', imageData.getSpacing());
+  console.log('test origin: ', origin);
+  console.log('test spacing: ', spacing);
+  console.log('test dir: ', dir);
+  console.log('test extent: ', imageData.getExtent());
+  console.log('test dims: ', imageData.getDimensions());
+  console.log('test spacing: ', imageData.getSpacing());
 
   // 按列顺序重建方向矩阵（列主序解构）
   const D = [
@@ -154,35 +184,39 @@ export function getImageCenterWorld (imageData) {
 }
 // 计算射线与AABB盒子相交的函数，返回两个交点，或者null
 export function intersectRayAABB (origin, dir, bounds) {
-  // 方向向量的倒数，避免除零
-  const invDir = dir.map(d => (Math.abs(d) < 1e-10 ? 1e10 : 1 / d));
+  // 构造一个通过 origin、沿 dir 方向的线段，而不是半无限射线
+  const p1 = origin.map((o, i) => o - dir[i] * 10000);
+  const p2 = origin.map((o, i) => o + dir[i] * 10000);
 
-  const tmin = (bounds[0] - origin[0]) * invDir[0];
-  const tmax = (bounds[1] - origin[0]) * invDir[0];
-  const tymin = (bounds[2] - origin[1]) * invDir[1];
-  const tymax = (bounds[3] - origin[1]) * invDir[1];
-  const tzmin = (bounds[4] - origin[2]) * invDir[2];
-  const tzmax = (bounds[5] - origin[2]) * invDir[2];
+  const tMin = [];
+  const tMax = [];
 
-  const t1 = Math.min(tmin, tmax);
-  const t2 = Math.max(tmin, tmax);
-  const ty1 = Math.min(tymin, tymax);
-  const ty2 = Math.max(tymin, tymax);
-  const tz1 = Math.min(tzmin, tzmax);
-  const tz2 = Math.max(tzmin, tzmax);
-
-  const tEnter = Math.max(t1, ty1, tz1);
-  const tExit = Math.min(t2, ty2, tz2);
-
-  if (tEnter > tExit || tExit < 0) {
-    // 不相交
-    return null;
+  for (let i = 0; i < 3; i++) {
+    const d = p2[i] - p1[i];
+    if (Math.abs(d) < 1e-10) {
+      // 射线平行轴
+      if (p1[i] < bounds[i * 2] || p1[i] > bounds[i * 2 + 1]) return null;
+      tMin[i] = -Infinity;
+      tMax[i] = Infinity;
+    } else {
+      const t1 = (bounds[i * 2] - p1[i]) / d;
+      const t2 = (bounds[i * 2 + 1] - p1[i]) / d;
+      tMin[i] = Math.min(t1, t2);
+      tMax[i] = Math.max(t1, t2);
+    }
   }
 
-  const pEnter = origin.map((o, i) => o + dir[i] * tEnter);
-  const pExit = origin.map((o, i) => o + dir[i] * tExit);
+  const tEnter = Math.max(tMin[0], tMin[1], tMin[2]);
+  const tExit = Math.min(tMax[0], tMax[1], tMax[2]);
+
+  if (tEnter > tExit || tExit < 0) return null;
+
+  const pEnter = p1.map((v, i) => v + (p2[i] - p1[i]) * tEnter);
+  const pExit = p1.map((v, i) => v + (p2[i] - p1[i]) * tExit);
+
   return [pEnter, pExit];
 }
+
 
 // 把 image 坐标（ijk）转为 canvas 坐标
 export function imageToCanvas (imageCoord, viewport, lineAxes) {
@@ -226,6 +260,20 @@ export function imageToCanvas (imageCoord, viewport, lineAxes) {
 }
 
 
+export function rotateVector (vec, axis, angle) {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const dot = vec3.dot(vec, axis);
+  const cross = vec3.cross([], axis, vec);
+
+  const rotated = [
+    vec[0] * cosA + cross[0] * sinA + axis[0] * dot * (1 - cosA),
+    vec[1] * cosA + cross[1] * sinA + axis[1] * dot * (1 - cosA),
+    vec[2] * cosA + cross[2] * sinA + axis[2] * dot * (1 - cosA),
+  ];
+
+  return rotated;
+}
 
 
 

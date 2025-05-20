@@ -1,6 +1,7 @@
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import LOCALDATA from "../util/loadLocalData.js";
-import { canvasToImage, imageToWorld, imageToCanvas, intersectRayAABB, worldToImage, getNewAxesFromPlane, getScalarRange, setMapperActor } from "../util/tools.js";
+const { vec3 } = glMatrix
+import { canvasToImage, imageToWorld, imageToCanvas, getLineWithinBounds, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
 
 // 三个容器dom
 const dom1 = document.getElementById("transverse-xy");
@@ -77,7 +78,120 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
     ctx.moveTo(x1, y1);
     ctx.lineTo(x2, y2);
     ctx.stroke();
-    ctx.restore();
+
+    const offsetDistance = 40; // 以 canvas 像素为单位，调整这个值控制距离
+    const dx = x1 - x2;
+    const dy = y1 - y2;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    // 归一化方向向量，防止长度为0
+    const ux = length === 0 ? 0 : dx / length;
+    const uy = length === 0 ? 0 : dy / length;
+
+    // 计算偏移点坐标
+    const dotX = x2 + ux * offsetDistance;
+    const dotY = y2 + uy * offsetDistance;
+
+    // 画圆点
+    // ctx.beginPath();
+    // ctx.arc(dotX, dotY, 6, 0, 2 * Math.PI);
+    // ctx.fillStyle = color;
+    // ctx.fill();
+    // ctx.restore();
+    // registerDraggablePoint(viewport, { x: x2, y: y2 }, worldP2, color);
+}
+
+function registerDraggablePoint (viewport, screenPos, worldPos, color, targetViewportType) {
+    const canvas = viewport.container.querySelector('canvas');
+    const rect = canvas.getBoundingClientRect();
+
+    const state = {
+        dragging: false,
+        startScreen: null,
+        startWorld: null,
+        viewport,
+        color,
+    };
+
+    const onMouseDown = (e) => {
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const dx = x - screenPos.x;
+        const dy = y - screenPos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < 8) { // 可调距离
+            state.dragging = true;
+            state.startScreen = [x, y];
+            state.startWorld = [...worldPos];
+        }
+    };
+
+    const onMouseMove = (e) => {
+        if (!state.dragging) return;
+
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        const [i, j] = viewport.axisMap;
+        const imageCoord = canvasToImage(x, y, viewport, viewport.axisMap);
+        const imageIndex = [0, 0, 0];
+        imageIndex[i] = imageCoord[0];
+        imageIndex[j] = imageCoord[1];
+
+        const centerImageCoord = worldToImage(viewport.imageData, crossSectionState.center);
+        const k = [0, 1, 2].filter(a => a !== i && a !== j)[0];
+        imageIndex[k] = centerImageCoord[k];
+
+        const newWorld = imageToWorld(viewport.imageData, imageIndex);
+
+        const v1 = vec3.sub([], state.startWorld, crossSectionState.center);
+        const v2 = vec3.sub([], newWorld, crossSectionState.center);
+
+        const axis = vec3.cross([], v1, v2);
+        const angle = vec3.angle(v1, v2);
+
+        if (vec3.length(axis) < 1e-6 || angle === 0) {
+            return;
+        }
+
+        vec3.normalize(axis, axis);
+
+        // ✅ 获取目标类型的 viewport（而非事件 viewport）
+        const targetViewport = getViewportByType(targetViewportType);
+        const targetPlane = targetViewport.plane;
+
+        // ✅ 计算旋转后的法向量和 up 向量
+        const newNormal = rotateVector(targetPlane.normal, axis, angle);
+        const newViewUp = rotateVector(targetPlane.viewUp, axis, angle);
+
+        // ✅ 更新 plane（仅角度变化，不更新 center）
+        targetPlane.normal = newNormal;
+        targetPlane.viewUp = newViewUp;
+
+        crossSectionState.plane = targetPlane; // 如果有用到可以保留
+
+        setVolumeWithCrossSection(
+            targetViewport,
+            targetViewport.imageData,
+            targetPlane.ww,
+            targetPlane.wl,
+            newNormal,
+            newViewUp,
+            crossSectionState.center,
+            targetViewport.scalarRange
+        );
+
+        drawAllCrossLines(crossSectionState.center); // 重绘线
+    };
+
+    const onMouseUp = () => {
+        state.dragging = false;
+    };
+
+    canvas.addEventListener('mousedown', onMouseDown);
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('mouseup', onMouseUp);
 }
 
 function drawAllCrossLines (center) {
@@ -87,17 +201,20 @@ function drawAllCrossLines (center) {
         coronal: [0, 2],
         sagittal: [1, 2],
     };
-    const origin = [-140.908, -164.227, 2.71689];
-    const spacing = [0.5469, 0.5469, 5.538457307692307];
-    const extent = [0, 511, 0, 511, 0, 25];
-    const bounds = [
-        origin[0], origin[0] + spacing[0] * (extent[1] - extent[0]),
-        origin[1], origin[1] + spacing[1] * (extent[3] - extent[2]),
-        origin[2], origin[2] + spacing[2] * (extent[5] - extent[4]),
-    ];
+    // const origin = [-140.908, -164.227, 2.71689];
+    // const spacing = [0.5469, 0.5469, 5.538457307692307];
+    // const extent = [0, 511, 0, 511, 0, 25];
+    // const bounds = [
+    //     origin[0], origin[0] + spacing[0] * (extent[1] - extent[0]),
+    //     origin[1], origin[1] + spacing[1] * (extent[3] - extent[2]),
+    //     origin[2], origin[2] + spacing[2] * (extent[5] - extent[4]),
+    // ];
+
+    // const bounds = imageData.getBounds(); // 放在最外层，只计算一次
 
     planeNames.forEach(target => {
         const viewport = viewports[target];
+        const bounds = viewport.imageData.getBounds();
         viewport.plane = crossSectionState.planes.find(p => p.name === target);
         viewport.axisMap = axisMapLookup[target];
 
@@ -111,37 +228,36 @@ function drawAllCrossLines (center) {
         otherPlanes.forEach(otherName => {
             const otherPlane = crossSectionState.planes.find(p => p.name === otherName);
 
-            // 计算相交线方向（叉积）
-            const lineDir = [
+            // 交线方向
+            const dir = [
                 targetNormal[1] * otherPlane.normal[2] - targetNormal[2] * otherPlane.normal[1],
                 targetNormal[2] * otherPlane.normal[0] - targetNormal[0] * otherPlane.normal[2],
                 targetNormal[0] * otherPlane.normal[1] - targetNormal[1] * otherPlane.normal[0],
             ];
 
-            const magnitude = Math.sqrt(lineDir[0] ** 2 + lineDir[1] ** 2 + lineDir[2] ** 2);
+            const magnitude = Math.sqrt(dir[0] ** 2 + dir[1] ** 2 + dir[2] ** 2);
             if (magnitude < 1e-6) {
                 console.warn(`Skipped line from ${target} ∩ ${otherName}, zero direction vector`);
                 return;
             }
 
-            const normalizedDir = lineDir.map(d => d / magnitude);
+            const unitDir = dir.map(d => d / magnitude);
 
-            // center 必须是体积内的某点（world坐标），如果不是，请先转换
-
-            // 用射线与体积盒求交，获取真实端点
-            const intersectPts = intersectRayAABB(center, normalizedDir, bounds);
-            if (!intersectPts) {
-                console.warn(`No intersection between line and volume bounds for ${target} ∩ ${otherName}`);
+            // 自动根据 image bounds 获取能完全落在体积内的线段
+            const clipped = getLineWithinBounds(center, unitDir, bounds);
+            if (!clipped) {
+                console.warn(`投影线 ${target} ∩ ${otherName} 完全在体积外，跳过`);
                 return;
             }
-            const [worldP1, worldP2] = intersectPts;
 
+            const [worldP1, worldP2] = clipped;
             const color = lineColors[otherName];
             drawProjectedLineInCanvas(viewport, worldP1, worldP2, color);
         });
     });
 
 }
+
 
 // 支持任意方向相机摆放逻辑
 function setCamera (camera, newZ, newY, center, size) {
@@ -180,34 +296,34 @@ function initViewport (viewport) {
         canvas.width = rect.width;
         canvas.height = rect.height;
 
-        canvas.addEventListener('click', event => {
-            const canvasX = event.clientX - rect.left;
-            const canvasY = event.clientY - rect.top;
+        // canvas.addEventListener('click', event => {
+        //     const canvasX = event.clientX - rect.left;
+        //     const canvasY = event.clientY - rect.top;
 
-            // 反算出图像坐标
-            const [i, j] = viewport.axisMap;
+        //     // 反算出图像坐标
+        //     const [i, j] = viewport.axisMap;
 
-            // 反转 canvas → image
-            const imageCoord = canvasToImage(canvasX, canvasY, viewport, viewport.axisMap);
+        //     // 反转 canvas → image
+        //     const imageCoord = canvasToImage(canvasX, canvasY, viewport, viewport.axisMap);
 
-            // 重构完整 image 坐标
-            const imageIndex = [0, 0, 0];
-            imageIndex[i] = imageCoord[0];
-            imageIndex[j] = imageCoord[1];
-            // 第三个轴使用当前 crossSectionState.center 上的 image 坐标
-            const centerImageCoord = worldToImage(viewport.imageData, crossSectionState.center);
-            const k = [0, 1, 2].filter(a => a !== i && a !== j)[0];
-            imageIndex[k] = centerImageCoord[k];
+        //     // 重构完整 image 坐标
+        //     const imageIndex = [0, 0, 0];
+        //     imageIndex[i] = imageCoord[0];
+        //     imageIndex[j] = imageCoord[1];
+        //     // 第三个轴使用当前 crossSectionState.center 上的 image 坐标
+        //     const centerImageCoord = worldToImage(viewport.imageData, crossSectionState.center);
+        //     const k = [0, 1, 2].filter(a => a !== i && a !== j)[0];
+        //     imageIndex[k] = centerImageCoord[k];
 
-            // 转换成 world 坐标
-            const worldCoord = imageToWorld(viewport.imageData, imageIndex);
+        //     // 转换成 world 坐标
+        //     const worldCoord = imageToWorld(viewport.imageData, imageIndex);
 
-            // 更新中心点
-            crossSectionState.center = worldCoord;
+        //     // 更新中心点
+        //     crossSectionState.center = worldCoord;
 
-            // ✅ 重新绘制投影线
-            drawAllCrossLines(worldCoord);
-        });
+        //     // ✅ 重新绘制投影线
+        //     drawAllCrossLines(worldCoord);
+        // });
     }
 }
 
@@ -324,13 +440,14 @@ async function start () {
     const center = crossSectionState.center;
     setImageDataForAllViewports(imageData);
 
-    // ✅ 1. 初始化每个正交切面对应的 2D 视图
+    //初始化每个正交切面对应的 2D 视图
     Object.values(viewports).forEach(viewport => {
         initViewport(viewport);
     });
 
     crossSectionState.planes.forEach(cfg => {
         const viewport = viewports[cfg.name];
+        viewport.scalarRange = scalarRange;
         setVolumeWithCrossSection(
             viewport,
             imageData,

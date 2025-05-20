@@ -901,7 +901,6 @@ class RenderEngine {
             let { x, y } = canvasPos;
             // 检查画布坐标是否有效
             if (x && y) {
-                console.log('canvasPos: ', x, y);
                 // 判断鼠标是否靠近十字中心位置，如果是，则需要显示圆形和矩形交互元素
                 if (Math.abs(x) < findRange || Math.abs(y) < findRange) {
                     flag.circleShow = true;
