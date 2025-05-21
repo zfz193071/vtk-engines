@@ -98,42 +98,104 @@ export function getAxisMapFromCamera (viewport) {
 }
 
 
-export function worldToImage (imageData, worldCoord) {
-  const origin = imageData.getOrigin();
-  const spacing = imageData.getSpacing();
-  const dir = imageData.getDirection();
-  // console.log('test origin: ', origin);
-  // console.log('test spacing: ', spacing);
-  // console.log('test dir: ', dir);
-  // console.log('test extent: ', imageData.getExtent());
-  // console.log('test dims: ', imageData.getDimensions());
-  // console.log('test spacing: ', imageData.getSpacing());
+// export function worldToImage (imageData, worldCoord) {
+//   const origin = imageData.getOrigin();
+//   const spacing = imageData.getSpacing();
+//   const dir = imageData.getDirection();
+//   // console.log('test origin: ', origin);
+//   // console.log('test spacing: ', spacing);
+//   // console.log('test dir: ', dir);
+//   // console.log('test extent: ', imageData.getExtent());
+//   console.log('test dims: ', imageData.getDimensions());
+//   // console.log('test spacing: ', imageData.getSpacing());
 
-  // 按列顺序重建方向矩阵（列主序解构）
-  const D = [
-    [dir[0], dir[1], dir[2]], // X轴方向
-    [dir[3], dir[4], dir[5]], // Y轴方向
-    [dir[6], dir[7], dir[8]], // Z轴方向
-  ];
+//   // 按列顺序重建方向矩阵（列主序解构）
+//   const D = [
+//     [dir[0], dir[1], dir[2]], // X轴方向
+//     [dir[3], dir[4], dir[5]], // Y轴方向
+//     [dir[6], dir[7], dir[8]], // Z轴方向
+//   ];
 
-  // M = D * diag(spacing)
-  const M = [
-    [D[0][0] * spacing[0], D[0][1] * spacing[1], D[0][2] * spacing[2]],
-    [D[1][0] * spacing[0], D[1][1] * spacing[1], D[1][2] * spacing[2]],
-    [D[2][0] * spacing[0], D[2][1] * spacing[1], D[2][2] * spacing[2]],
-  ];
+//   // M = D * diag(spacing)
+//   const M = [
+//     [D[0][0] * spacing[0], D[0][1] * spacing[1], D[0][2] * spacing[2]],
+//     [D[1][0] * spacing[0], D[1][1] * spacing[1], D[1][2] * spacing[2]],
+//     [D[2][0] * spacing[0], D[2][1] * spacing[1], D[2][2] * spacing[2]],
+//   ];
+
+//   const delta = [
+//     worldCoord[0] - origin[0],
+//     worldCoord[1] - origin[1],
+//     worldCoord[2] - origin[2],
+//   ];
+
+//   const M_inv = invert3x3(M);
+//   const ijkFloat = multiplyMatVec(M_inv, delta);
+
+//   return ijkFloat;
+// }
+
+export function worldToImage (worldCoord, viewport) {
+  const [Wx, Wy, Wz] = worldCoord;
+  const [Cx, Cy, Cz] = [-0.5, -20, 30];
 
   const delta = [
-    worldCoord[0] - origin[0],
-    worldCoord[1] - origin[1],
-    worldCoord[2] - origin[2],
+    Wx - Cx,
+    Wy - Cy,
+    Wz - Cz,
   ];
 
-  const M_inv = invert3x3(M);
-  const ijkFloat = multiplyMatVec(M_inv, delta);
+  const plane = viewport.plane;
+  const planeName = plane.name;
+  const normal = plane.normal;
+  const viewUp = plane.viewUp;
 
-  return ijkFloat;
+  let u = vtk.Common.Core.vtkMath.cross(viewUp, normal, []);
+
+  let v = vtk.Common.Core.vtkMath.cross(normal, u, []);
+
+  // 动态获取spacing
+  const spacing = [0.5469, 0.5469, 5.538457307692307];
+  let dx, dy;
+  if (planeName === "transverse") {
+    dx = spacing[0];
+    dy = spacing[1];
+  } else if (planeName === "coronal") {
+    dx = spacing[0];
+    dy = spacing[2];
+  } else if (planeName === "sagittal") {
+    dx = spacing[1];
+    dy = spacing[2];
+  } else {
+    dx = dy = 1; // 默认防护
+  }
+
+  const size = [512, 512, 26];
+  let width, height;
+  if (planeName === "transverse") {
+    width = size[0];
+    height = size[1];
+  } else if (planeName === "coronal") {
+    width = size[0];
+    height = size[2];
+  } else if (planeName === "sagittal") {
+    width = size[1];
+    height = size[2];
+  } else {
+    width = height = 1;
+  }
+
+  const uVal = vtk.Common.Core.vtkMath.dot(delta, u);
+  const vVal = vtk.Common.Core.vtkMath.dot(delta, v);
+
+  // 图像坐标转换
+  const imageU = (uVal / dx) + width / 2;
+  const imageV = height / 2 - (vVal / dy);  // 反转Y轴，适配图像坐标向下
+
+  return [imageU, imageV];
 }
+
+
 
 export function worldToImage1 (worldCoord, origin, spacing, direction = [
   1, 0, 0,
@@ -245,54 +307,117 @@ export function intersectRayAABB (origin, dir, bounds) {
 
 
 // 把 image 坐标（ijk）转为 canvas 坐标
-export function imageToCanvas (imageCoord, viewport, lineAxes) {
+// export function imageToCanvas (imageCoord, viewport, lineAxes) {
+//   const canvas = viewport.container.querySelector('canvas');
+//   const canvasWidth = canvas.width;
+//   const canvasHeight = canvas.height;
+
+//   const imageData = viewport.imageData;
+//   const dims = imageData.getDimensions();      // [dimX, dimY, dimZ]
+//   const direction = imageData.getDirection();  // 3x3 矩阵
+
+//   const [axisI, axisJ] = lineAxes; // e.g. [0, 2]
+
+//   const extentI = dims[axisI];
+//   const extentJ = dims[axisJ];
+
+//   let i = imageCoord[axisI];
+//   let j = imageCoord[axisJ];
+
+//   // 按轴判断是否翻转
+//   const flipI = direction[axisI * 3 + axisI] < 0 ? -1 : 1;
+//   const flipJ = direction[axisJ * 3 + axisJ] < 0 ? -1 : 1;
+
+//   if (flipI === -1) i = extentI - 1 - i;
+//   if (flipJ === -1) j = extentJ - 1 - j;
+
+//   // 缩放和偏移计算
+//   const imageAspect = extentI / extentJ;
+//   const canvasAspect = canvasWidth / canvasHeight;
+
+//   let scale, offsetX = 0, offsetY = 0;
+
+//   if (imageAspect > canvasAspect) {
+//     // 横向占满，高度居中
+//     scale = canvasWidth / extentI;
+//     const imageDisplayHeight = extentJ * scale;
+//     offsetY = (canvasHeight - imageDisplayHeight) / 2;
+//   } else {
+//     // 纵向占满，宽度居中
+//     scale = canvasHeight / extentJ;
+//     const imageDisplayWidth = extentI * scale;
+//     offsetX = (canvasWidth - imageDisplayWidth) / 2;
+//   }
+
+//   // ⚠️ 这里关键：I轴 → canvasX, J轴 → canvasY
+//   const xCanvas = i * scale + offsetX;
+//   const yCanvas = j * scale + offsetY;
+
+//   return [xCanvas, yCanvas];
+// }
+
+
+/**
+ * 将图像坐标转换为 canvas 坐标，考虑切面投影。
+ * @param {number[]} imageCoord - 图像索引坐标 [i, j, k]
+ * @param {object} viewport - 包含 imageData、canvas 等
+ * @param {object} plane - 当前视图的切片平面参数（含 normal、viewUp）
+ * @param {number[]} center - 当前视图的世界坐标中心
+ * @returns {number[]} - [xCanvas, yCanvas]
+ */
+export function imageToCanvas (imageCoord, viewport) {
   const canvas = viewport.container.querySelector('canvas');
   const canvasWidth = canvas.width;
   const canvasHeight = canvas.height;
+  const plane = viewport.plane;
+  const center = [-0.5, -20, 30]
 
   const imageData = viewport.imageData;
-  const dims = imageData.getDimensions();
-  const direction = imageData.getDirection();
 
-  const [axisI, axisJ] = lineAxes;
+  // 1. image index → world position
+  const worldCoord = imageData.indexToWorld(imageCoord);
 
-  const extentI = dims[axisI];
-  const extentJ = dims[axisJ];
+  // 2. 构建切面投影坐标系（基于 normal/viewUp）
+  const normal = vec3.normalize([], plane.normal);
+  const viewUp = vec3.normalize([], plane.viewUp);
+  const viewRight = vec3.normalize([], vec3.cross([], normal, viewUp));
 
-  let i = imageCoord[axisI];
-  let j = imageCoord[axisJ];
+  // 3. 相对 center 的向量（worldCoord - center）
+  const relative = vec3.subtract([], worldCoord, center);
 
-  const flipI = direction[axisI * 3 + axisI] < 0 ? -1 : 1;
-  const flipJ = direction[axisJ * 3 + axisJ] < 0 ? -1 : 1;
+  // 4. 投影到切面坐标系：得到 in-plane 坐标
+  const xInPlane = vec3.dot(relative, viewRight); // canvas X
+  const yInPlane = vec3.dot(relative, viewUp);    // canvas Y
 
-  if (flipI === -1) i = extentI - 1 - i;
-  if (flipJ === -1) j = extentJ - 1 - j;
+  // 5. 图像尺寸估算（用 spacing & extent）
+  const spacing = imageData.getSpacing(); // [sx, sy, sz]
+  const dims = imageData.getDimensions(); // [dimX, dimY, dimZ]
+  const boundsX = spacing[0] * dims[0];
+  const boundsY = spacing[1] * dims[1];
+  const boundsZ = spacing[2] * dims[2];
 
-  // 图像实际比例
-  const imageAspect = extentI / extentJ;
+  // 估算切面范围（假设最大展开）
+  const planeWidth = Math.max(boundsX, boundsY, boundsZ);
+  const planeHeight = planeWidth;
+
+  // 6. 缩放比例和居中偏移（保持比例）
+  const imageAspect = planeWidth / planeHeight;
   const canvasAspect = canvasWidth / canvasHeight;
 
-  // VTK渲染时是按最长边缩放，另一边留白填充
-  let scaleX, scaleY;
-  let offsetX = 0, offsetY = 0;
-
+  let scale, offsetX = 0, offsetY = 0;
   if (imageAspect > canvasAspect) {
-    // 图像太宽，横向撑满，高度留白
-    scaleX = canvasWidth / extentI;
-    scaleY = scaleX;
-    const imageDisplayHeight = extentJ * scaleY;
-    offsetY = (canvasHeight - imageDisplayHeight) / 2;
+    scale = canvasWidth / planeWidth;
+    const displayHeight = planeHeight * scale;
+    offsetY = (canvasHeight - displayHeight) / 2;
   } else {
-    // 图像太高，纵向撑满，宽度留白
-    scaleY = canvasHeight / extentJ;
-    scaleX = scaleY;
-    const imageDisplayWidth = extentI * scaleX;
-    offsetX = (canvasWidth - imageDisplayWidth) / 2;
+    scale = canvasHeight / planeHeight;
+    const displayWidth = planeWidth * scale;
+    offsetX = (canvasWidth - displayWidth) / 2;
   }
 
-  // 转为 canvas 坐标（考虑偏移）
-  const xCanvas = i * scaleX + offsetX;
-  const yCanvas = j * scaleY + offsetY;
+  // 7. 映射到 canvas 坐标
+  const xCanvas = xInPlane * scale + canvasWidth / 2;
+  const yCanvas = -yInPlane * scale + canvasHeight / 2;
 
   return [xCanvas, yCanvas];
 }

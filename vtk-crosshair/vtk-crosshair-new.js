@@ -1,7 +1,7 @@
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import LOCALDATA from "../util/loadLocalData.js";
 const { vec3 } = glMatrix
-import { canvasToImage, imageToWorld, imageToCanvas, getLineWithinBounds, getAxisMapFromCamera, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
+import { canvasToImage, imageToWorld, getLineWithinBounds, getAxisMapFromCamera, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
 
 // 三个容器dom
 const contents = document.getElementsByClassName("content")
@@ -20,7 +20,7 @@ const crossSectionState = {
     center: [-0.5, -20, 30],
     planes: [
         { name: "transverse", normal: [0, 0, 1], viewUp: [0, -1, 0] },
-        { name: "coronal", normal: [0, 1, 0], viewUp: [0, 0, -1] },
+        { name: "coronal", normal: [0.7071, 0.7071, 0], viewUp: [0, 0, -1] },
         { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
     ]
 };
@@ -56,38 +56,89 @@ crossSectionState.planes.forEach(plane => {
 //     }
 // });
 
+function imageToCanvas (imageCoord, planeName) {
+    const size3D = [512, 512, 26];
+
+    let imageSize2D;
+    if (planeName === "transverse") {
+        // xy平面
+        imageSize2D = [size3D[0], size3D[1]];
+    } else if (planeName === "coronal") {
+        // xz平面
+        imageSize2D = [size3D[0], size3D[2]];
+    } else if (planeName === "sagittal") {
+        // yz平面
+        imageSize2D = [size3D[1], size3D[2]];
+    } else {
+        throw new Error(`Unsupported plane name: ${planeName}`);
+    }
+
+    const [imageU, imageV] = imageCoord;
+    const [imageWidth, imageHeight] = imageSize2D;
+
+    // 注意image坐标和canvas坐标的原点和方向要匹配，通常都是左上角为(0,0)，Y向下
+
+    // 计算缩放比例
+    const scaleX = widthC / imageWidth;
+    const scaleY = heightC / imageHeight;
+
+    const canvasX = imageU * scaleX;
+    const canvasY = imageV * scaleY;
+
+    return [canvasX, canvasY];
+}
+
 
 // 使用 world → image → canvas 显示线段
 function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
     console.log("test viewport plane: ", viewport.plane.name);
     console.log('test worldcoord: ', worldP1, worldP2);
 
+    // const worldCenter = crossSectionState.center;
+
 
     const imageData = viewport.imageData;
     const canvas = viewport.container.querySelector('canvas');
     const ctx = canvas.getContext('2d');
 
-    const imageP1 = worldToImage(imageData, worldP1);
-    const imageP2 = worldToImage(imageData, worldP2);
+    // const imageP1 = worldToImage(worldP1, viewport);
+    // const imageP2 = worldToImage(worldP2, viewport);
+    // const imageCenter = worldToImage(imageData, worldCenter);
+    // console.log("test imagecenter: ", imageCenter);
+
+    let displayCoords1 = viewport.renderer.worldToNormalizedDisplay(
+        worldP1[0],
+        worldP1[1],
+        worldP1[2],
+        widthC / heightC,
+    );
+
+    let displayCoords2 = viewport.renderer.worldToNormalizedDisplay(
+        worldP2[0],
+        worldP2[1],
+        worldP2[2],
+        widthC / heightC,
+    );
 
 
-    console.log("test Image imageP1 imageP2: ", imageP1, imageP2);
-    console.log("test axisMap: ", viewport.axisMap);
+    let x1 = displayCoords1[0] * widthC
+    let y1 = (1 - displayCoords1[1]) * heightC
 
-    const [x1, y1] = imageToCanvas(imageP1, viewport, viewport.axisMap);
-    const [x2, y2] = imageToCanvas(imageP2, viewport, viewport.axisMap);
+    let x2 = displayCoords2[0] * widthC
+    let y2 = (1 - displayCoords2[1]) * heightC
+
+
+    // console.log("test Image imageP1 imageP2: ", imageP1, imageP2);
+
+    // const [x1, y1] = imageToCanvas(imageP1, viewport.plane.name);
+    // const [x2, y2] = imageToCanvas(imageP2, viewport.plane.name);
+
+    // const [x3, y3] = imageToCanvas(imageCenter, viewport.plane.name);
 
     console.log("test canvas x1, y1, x2, y2: ", x1, y1, x2, y2);
 
+    // console.log("test canvas x3, y3: ", x3, y3);
 
-    console.log('drawProjectedLineInCanvas');
-    console.log('  worldP1:', worldP1);
-    console.log('  worldP2:', worldP2);
-    console.log('  imageP1:', imageP1);
-    console.log('  imageP2:', imageP2);
-    console.log('  axisMap:', viewport.axisMap);
-    console.log('  canvasPos1:', x1, y1);
-    console.log('  canvasPos2:', x2, y2);
 
     ctx.save();
     ctx.lineWidth = 1;
@@ -269,6 +320,8 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
     // 双 clipping plane
     const half = thickness / 2;
     const offset = newZ.map(n => n * half);
+
+    console.log("test offset: ", offset, newZ);
 
     const plane1 = vtk.Common.DataModel.vtkPlane.newInstance({
         origin: [
