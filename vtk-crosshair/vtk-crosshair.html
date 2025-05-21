@@ -16,20 +16,18 @@
         height: 100%;
         border: 1px solid paleturquoise;
         position: relative;
-        
-        
       }
-      .viewport .viewport_canvas{
-          position: absolute;
-          top: 0;
-          bottom: 0;
-        }
-      .viewport .viewport_div{
-            position: absolute;
-            display: block;
-            top: 0;
-            bottom: 0;
-        }
+      .viewport .viewport_canvas {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+      }
+      .viewport .viewport_div {
+        position: absolute;
+        display: block;
+        top: 0;
+        bottom: 0;
+      }
       .content {
         width: 100%;
         height: 720px;
@@ -62,16 +60,16 @@
                 }
               }
             }
-            .para-set-group{
-                display: flex;
-                flex-wrap: wrap;
-                .para-set-element{
-                    flex: 0 0 33.333%;
-                    text-align: left;
-                    input{
-                        margin: 10px;
-                    }
+            .para-set-group {
+              display: flex;
+              flex-wrap: wrap;
+              .para-set-element {
+                flex: 0 0 33.333%;
+                text-align: left;
+                input {
+                  margin: 10px;
                 }
+              }
             }
           }
         }
@@ -94,7 +92,7 @@
       </div>
     </div>
     <div class="content2">
-      <div id="render_3d" class="content3" style="position: relative;"></div>
+      <div id="render_3d" class="content3" style="position: relative"></div>
       <div class="content3">
         <fieldset class="opt-area">
           <legend>Choose Opt :</legend>
@@ -136,84 +134,152 @@
               <label for="ACROSS">ACROSS</label>
             </div>
             <div class="opt-select-element">
-              <input
-                type="checkbox"
-                id="ORTHO_MODE"
-                name="ORTHO_MODE"
-              />
+              <input type="checkbox" id="ORTHO_MODE" name="ORTHO_MODE" />
               <label for="ORTHO_MODE">Orthogonal</label>
             </div>
-            
           </div>
         </fieldset>
         <fieldset class="opt-area">
           <legend>Para Set :</legend>
-          <div class="para-set-group">
-          </div>
+          <div class="para-set-group"></div>
         </fieldset>
+        <div></div>
       </div>
     </div>
   </body>
   <script>
-    const INPUTSETDIC = ["scale","ww","wl","pageT","pageC","pageS","rotateT","rotateC","rotateS","thickT","thickC","thickS"]
+    const INPUTSETDIC = [
+      "scale",
+      "ww",
+      "wl",
+      "pageT",
+      "pageC",
+      "pageS",
+      "crossSectionState",
+      "thickT",
+      "thickC",
+      "thickS",
+    ];
     const GPARA = {
-        scale: 1,
-        ww: 2178,
-        wl: 1089,
-        pageT: 10,
-        pageC: 256,
-        pageS: 256,
-        rotateT: 0,
-        rotateC: 0,
-        rotateS: 0,
-        thickS: 1,
-        thickC: 1,
-        thickT: 1
-    }
+      scale: 1,
+      ww: 2178,
+      wl: 1089,
+      pageT: 10,
+      pageC: 256,
+      pageS: 256,
+      thickS: 1,
+      thickC: 1,
+      thickT: 1,
+      crossSectionState: {
+        center: [-0.5, -20, 30],
+        planes: [
+          {
+            name: "transverse",
+            normal: [0, 0.7071, 0.7071],
+            viewUp: [0, -1, 0],
+          },
+          { name: "coronal", normal: [0.7071, 0.7071, 0], viewUp: [0, 0, -1] },
+          { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
+        ],
+      },
+    };
     //增加全局变量监听
     // 使用Object.defineProperty定义属性的setter和getter
-    for(let i = 0;i<INPUTSETDIC.length;i++){
-        let div = document.createElement("div")
-        div.className = "para-set-element"
-        let input = document.createElement("input")
-        input.type = "number"
-        input.id = INPUTSETDIC[i]
-        input.name = INPUTSETDIC[i]
-        input.className = "paraSetor"
-        input.value = GPARA[INPUTSETDIC[i]]
-        let label = document.createElement("label")
-        label.for = INPUTSETDIC[i]
-        label.innerText = INPUTSETDIC[i]+": "
-        label.style.display = "inline-block"
-        label.style.width = "50px"
-        div.appendChild(label)
-        div.appendChild(input)
-        document.querySelector(".para-set-group").appendChild(div)
-    }
-    document.getElementById("scale").step = 0.1
-    document.getElementById("ww").step = 100
-    document.getElementById("wl").step = 10
-    document.getElementById("rotateT").step = 10
-    document.getElementById("rotateC").step = 10
-    document.getElementById("rotateS").step = 10
+    for (let i = 0; i < INPUTSETDIC.length; i++) {
+      const key = INPUTSETDIC[i];
 
-    function changeParaSet(){
-        let inputs = document.querySelectorAll(".paraSetor")
-        for(let i = 0;i<inputs.length;i++){
-            GPARA[inputs[i].id] = inputs[i].value
-        }
-        GPARA.value = {...GPARA}
+      if (key === "crossSectionState") {
+        const csState = GPARA.crossSectionState;
+
+        // center
+        const centerDiv = document.createElement("div");
+        centerDiv.className = "para-set-element";
+        const centerLabel = document.createElement("label");
+        centerLabel.innerText = "center: ";
+        centerLabel.style.display = "inline-block";
+        centerLabel.style.width = "50px";
+        centerDiv.appendChild(centerLabel);
+
+        const centerInput = document.createElement("input");
+        centerInput.type = "text";
+        centerInput.name = "center";
+        centerInput.className = "paraSetor";
+        centerInput.value = csState.center.join(", ");
+        centerDiv.appendChild(centerInput);
+
+        document.querySelector(".para-set-group").appendChild(centerDiv);
+
+        // planes
+        csState.planes.forEach((plane) => {
+          const planeDiv = document.createElement("div");
+          planeDiv.className = "para-set-element";
+
+          const nameLabel = document.createElement("label");
+          nameLabel.innerText = plane.name + ": ";
+          nameLabel.style.display = "block";
+          planeDiv.appendChild(nameLabel);
+
+          const normalInput = document.createElement("input");
+          normalInput.type = "text";
+          normalInput.name = `${plane.name}_normal`;
+          normalInput.className = "paraSetor";
+          normalInput.style.marginRight = "10px";
+          normalInput.value = plane.normal.join(", ");
+          planeDiv.appendChild(normalInput);
+
+          const viewUpInput = document.createElement("input");
+          viewUpInput.type = "text";
+          viewUpInput.name = `${plane.name}_viewUp`;
+          viewUpInput.className = "paraSetor";
+          viewUpInput.value = plane.viewUp.join(", ");
+          planeDiv.appendChild(viewUpInput);
+
+          document.querySelector(".para-set-group").appendChild(planeDiv);
+        });
+      } else {
+        // 普通参数处理逻辑保持不变
+        let div = document.createElement("div");
+        div.className = "para-set-element";
+        let input = document.createElement("input");
+        input.type = "number";
+        input.id = key;
+        input.name = key;
+        input.className = "paraSetor";
+        input.value = GPARA[key];
+        let label = document.createElement("label");
+        label.for = key;
+        label.innerText = key + ": ";
+        label.style.display = "inline-block";
+        label.style.width = "50px";
+        div.appendChild(label);
+        div.appendChild(input);
+        document.querySelector(".para-set-group").appendChild(div);
+      }
+    }
+
+    document.getElementById("scale").step = 0.1;
+    document.getElementById("ww").step = 100;
+    document.getElementById("wl").step = 10;
+    document.getElementById("rotateT").step = 10;
+    document.getElementById("rotateC").step = 10;
+    document.getElementById("rotateS").step = 10;
+
+    function changeParaSet() {
+      let inputs = document.querySelectorAll(".paraSetor");
+      for (let i = 0; i < inputs.length; i++) {
+        GPARA[inputs[i].id] = inputs[i].value;
+      }
+      GPARA.value = { ...GPARA };
     }
     //监听值变化
-    document.querySelector(".para-set-group").addEventListener("change",changeParaSet)
-
-    
+    document
+      .querySelector(".para-set-group")
+      .addEventListener("change", changeParaSet);
   </script>
   <script src="../util/gl-matrix.js"></script>
   <script src="../util/axios.min.js"></script>
   <script src="../util/vtk.js"></script>
   <script src="../public/js/dicomParser.min.js"></script>
-
 
   <script>
     //测试函数
@@ -228,5 +294,4 @@
     // console.log(result);
   </script>
   <script type="module" src="./vtk-crosshair.js"></script>
-
 </html>
