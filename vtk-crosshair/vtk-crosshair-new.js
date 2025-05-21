@@ -19,7 +19,7 @@ const rangeSize = [widthC, heightC]
 const crossSectionState = {
     center: [-0.5, -20, 30],
     planes: [
-        { name: "transverse", normal: [0, 0, 1], viewUp: [0, -1, 0] },
+        { name: "transverse", normal: [0, 0.7071, 0.7071], viewUp: [0, -1, 0] },
         { name: "coronal", normal: [0.7071, 0.7071, 0], viewUp: [0, 0, -1] },
         { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
     ]
@@ -44,6 +44,7 @@ crossSectionState.planes.forEach(plane => {
         plane,
         imageData: null,
         renderer: null,
+        newAxes: null,
     };
 });
 
@@ -56,55 +57,14 @@ crossSectionState.planes.forEach(plane => {
 //     }
 // });
 
-function imageToCanvas (imageCoord, planeName) {
-    const size3D = [512, 512, 26];
-
-    let imageSize2D;
-    if (planeName === "transverse") {
-        // xy平面
-        imageSize2D = [size3D[0], size3D[1]];
-    } else if (planeName === "coronal") {
-        // xz平面
-        imageSize2D = [size3D[0], size3D[2]];
-    } else if (planeName === "sagittal") {
-        // yz平面
-        imageSize2D = [size3D[1], size3D[2]];
-    } else {
-        throw new Error(`Unsupported plane name: ${planeName}`);
-    }
-
-    const [imageU, imageV] = imageCoord;
-    const [imageWidth, imageHeight] = imageSize2D;
-
-    // 注意image坐标和canvas坐标的原点和方向要匹配，通常都是左上角为(0,0)，Y向下
-
-    // 计算缩放比例
-    const scaleX = widthC / imageWidth;
-    const scaleY = heightC / imageHeight;
-
-    const canvasX = imageU * scaleX;
-    const canvasY = imageV * scaleY;
-
-    return [canvasX, canvasY];
-}
-
 
 // 使用 world → image → canvas 显示线段
 function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
     console.log("test viewport plane: ", viewport.plane.name);
     console.log('test worldcoord: ', worldP1, worldP2);
 
-    // const worldCenter = crossSectionState.center;
-
-
-    const imageData = viewport.imageData;
     const canvas = viewport.container.querySelector('canvas');
     const ctx = canvas.getContext('2d');
-
-    // const imageP1 = worldToImage(worldP1, viewport);
-    // const imageP2 = worldToImage(worldP2, viewport);
-    // const imageCenter = worldToImage(imageData, worldCenter);
-    // console.log("test imagecenter: ", imageCenter);
 
     let displayCoords1 = viewport.renderer.worldToNormalizedDisplay(
         worldP1[0],
@@ -128,17 +88,7 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
     let y2 = (1 - displayCoords2[1]) * heightC
 
 
-    // console.log("test Image imageP1 imageP2: ", imageP1, imageP2);
-
-    // const [x1, y1] = imageToCanvas(imageP1, viewport.plane.name);
-    // const [x2, y2] = imageToCanvas(imageP2, viewport.plane.name);
-
-    // const [x3, y3] = imageToCanvas(imageCenter, viewport.plane.name);
-
     console.log("test canvas x1, y1, x2, y2: ", x1, y1, x2, y2);
-
-    // console.log("test canvas x3, y3: ", x3, y3);
-
 
     ctx.save();
     ctx.lineWidth = 1;
@@ -155,11 +105,7 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
 
 function drawAllCrossLines (center) {
     const planeNames = ['transverse', 'coronal', 'sagittal'];
-    const axisMapLookup = {
-        transverse: [0, 1],
-        coronal: [0, 2],
-        sagittal: [1, 2],
-    };
+
     const origin = [-140.908, -164.227, 2.71689];
     const spacing = [0.5469, 0.5469, 5.538457307692307];
     const extent = [0, 511, 0, 511, 0, 25];
@@ -174,8 +120,7 @@ function drawAllCrossLines (center) {
     planeNames.forEach(target => {
         const viewport = viewports[target];
         viewport.plane = crossSectionState.planes.find(p => p.name === target);
-        viewport.axisMap = axisMapLookup[target];
-        console.log("test new axisMap: ", viewport.axisMap);
+
 
         const canvas = viewport.container.querySelector('canvas');
         const ctx = canvas.getContext('2d');
@@ -202,8 +147,12 @@ function drawAllCrossLines (center) {
 
             const unitDir = dir.map(d => d / magnitude);
 
+            const physicalWidth = widthC * viewport.pixelSpacingX;
+            const physicalHeight = heightC * viewport.pixelSpacingY;
+            const physicalLength = Math.sqrt(physicalWidth ** 2 + physicalHeight ** 2);
+
             // 自动根据 image bounds 获取能完全落在体积内的线段
-            const clipped = getLineWithinBounds(center, unitDir, bounds);
+            const clipped = getLineWithinBounds(center, unitDir, bounds, physicalLength);
             if (!clipped) {
                 console.warn(`投影线 ${target} ∩ ${otherName} 完全在体积外，跳过`);
                 return;
@@ -265,34 +214,50 @@ function initViewport (viewport) {
         viewport.container.querySelector('div').style.width = rangeSize[0] + 'px';
         viewport.container.querySelector('div').style.height = rangeSize[1] + 'px';
 
-        // canvas.addEventListener('click', event => {
-        //     const canvasX = event.clientX - rect.left;
-        //     const canvasY = event.clientY - rect.top;
+        const axisMapLookup = {
+            transverse: [0, 1],
+            coronal: [0, 2],
+            sagittal: [1, 2],
+        };
+        viewport.axisMap = axisMapLookup[viewport.plane.name];
 
-        //     // 反算出图像坐标
-        //     const [i, j] = viewport.axisMap;
+        const bounds = viewport.imageData.getBounds();
+        // 反算出图像坐标
+        const [i, j] = viewport.axisMap;
+        const worldWidth = bounds[2 * i + 1] - bounds[2 * i];   // i 轴方向在世界坐标系的长度
+        const worldHeight = bounds[2 * j + 1] - bounds[2 * j];
+        const pixelSpacingX = worldWidth / widthC;
+        const pixelSpacingY = worldHeight / heightC;
 
-        //     // 反转 canvas → image
-        //     const imageCoord = canvasToImage(canvasX, canvasY, viewport, viewport.axisMap);
+        viewport.pixelSpacingX = pixelSpacingX;
+        viewport.pixelSpacingY = pixelSpacingY;
 
-        //     // 重构完整 image 坐标
-        //     const imageIndex = [0, 0, 0];
-        //     imageIndex[i] = imageCoord[0];
-        //     imageIndex[j] = imageCoord[1];
-        //     // 第三个轴使用当前 crossSectionState.center 上的 image 坐标
-        //     const centerImageCoord = worldToImage(viewport.imageData, crossSectionState.center);
-        //     const k = [0, 1, 2].filter(a => a !== i && a !== j)[0];
-        //     imageIndex[k] = centerImageCoord[k];
 
-        //     // 转换成 world 坐标
-        //     const worldCoord = imageToWorld(viewport.imageData, imageIndex);
 
-        //     // 更新中心点
-        //     crossSectionState.center = worldCoord;
+        canvas.addEventListener('click', event => {
+            const canvasX = event.clientX - rect.left;
+            const canvasY = event.clientY - rect.top;
 
-        //     // ✅ 重新绘制投影线
-        //     drawAllCrossLines(worldCoord);
-        // });
+            const deltaX = canvasX - canvas.width / 2;
+            const deltaY = -(canvasY - canvas.height / 2);
+
+
+            const offsetWorld = [0, 0, 0];
+            for (let i = 0; i < 3; i++) {
+                offsetWorld[i] =
+                    deltaX * pixelSpacingX * viewport.newAxes.newX[i] +
+                    deltaY * pixelSpacingY * viewport.newAxes.newY[i];
+            }
+
+            const clickWorld = [0, 0, 0];
+            for (let i = 0; i < 3; i++) {
+                clickWorld[i] = crossSectionState.center[i] + offsetWorld[i];
+            }
+
+            crossSectionState.center = clickWorld;
+
+            drawAllCrossLines(clickWorld);
+        });
     }
 }
 
@@ -311,6 +276,7 @@ function setVolumeWithCrossSection (viewport, imageData, ww, wl, normal, viewUp,
     const viewportSize = [rangeSize[0], rangeSize[1]];
     setCamera(camera, newZ, newY, newCenter, size, viewportSize);
 
+    viewport.newAxes = { newX, newY, newZ };
     console.log('当前视图对应切片 index：', imageData.worldToIndex(center));
 
 

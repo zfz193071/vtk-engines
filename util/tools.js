@@ -43,7 +43,7 @@ export function multiplyMatVec (m, v) {
   ];
 }
 // 计算方向在体积内的最大正负延伸长度
-export function getLineWithinBounds (center, dir, bounds) {
+export function getLineWithinBounds (center, dir, bounds, maxPhysicalLength = Infinity) {
   let minT = -Infinity;
   let maxT = Infinity;
 
@@ -51,7 +51,14 @@ export function getLineWithinBounds (center, dir, bounds) {
     const origin = center[i];
     const d = dir[i];
 
-    if (Math.abs(d) < 1e-6) continue;
+    if (Math.abs(d) < 1e-6) {
+      // 如果方向分量为0，平行于该轴
+      // 判断中心点是否在bounds内
+      if (origin < bounds[i * 2] || origin > bounds[i * 2 + 1]) {
+        return null; // 无交点
+      }
+      continue;
+    }
 
     const t1 = (bounds[i * 2] - origin) / d;
     const t2 = (bounds[i * 2 + 1] - origin) / d;
@@ -59,20 +66,32 @@ export function getLineWithinBounds (center, dir, bounds) {
     const tMin = Math.min(t1, t2);
     const tMax = Math.max(t1, t2);
 
-    minT = Math.max(minT, tMin);
-    maxT = Math.min(maxT, tMax);
+    if (tMin > minT) minT = tMin;
+    if (tMax < maxT) maxT = tMax;
   }
 
   if (minT > maxT) {
-    return null;
+    return null; // 没有交点
   }
 
-  // 修复：确保返回的线段以 center 为中点，方向对称展开
-  const halfLength = Math.min(maxT, -minT);
-  const p1 = center.map((c, i) => c - dir[i] * halfLength);
-  const p2 = center.map((c, i) => c + dir[i] * halfLength);
-  return [p1, p2];
+  // 根据 bounds 计算出的最大线段长度
+  const boundLength = maxT - minT;
+
+  // 确定线段长度，不能超过视口物理长度，同时不能超过 bounds 长度
+  const halfLength = Math.min(boundLength / 2, maxPhysicalLength / 2);
+
+  // 上面写得有点复杂，换一种更简单的写法：
+  // 线段以 (center + dir * (minT + boundLength / 2)) 为中点
+  // 方向上各延伸 halfLength 长度
+  const midT = (minT + maxT) / 2;
+  const midpoint = center.map((c, i) => c + dir[i] * midT);
+
+  const point1 = midpoint.map((c, i) => c - dir[i] * halfLength);
+  const point2 = midpoint.map((c, i) => c + dir[i] * halfLength);
+
+  return [point1, point2];
 }
+
 
 
 export function getAxisMapFromCamera (viewport) {
@@ -195,7 +214,37 @@ export function worldToImage (worldCoord, viewport) {
   return [imageU, imageV];
 }
 
+function imageToCanvasNew (imageCoord, planeName) {
+  const size3D = [512, 512, 26];
 
+  let imageSize2D;
+  if (planeName === "transverse") {
+    // xy平面
+    imageSize2D = [size3D[0], size3D[1]];
+  } else if (planeName === "coronal") {
+    // xz平面
+    imageSize2D = [size3D[0], size3D[2]];
+  } else if (planeName === "sagittal") {
+    // yz平面
+    imageSize2D = [size3D[1], size3D[2]];
+  } else {
+    throw new Error(`Unsupported plane name: ${planeName}`);
+  }
+
+  const [imageU, imageV] = imageCoord;
+  const [imageWidth, imageHeight] = imageSize2D;
+
+  // 注意image坐标和canvas坐标的原点和方向要匹配，通常都是左上角为(0,0)，Y向下
+
+  // 计算缩放比例
+  const scaleX = widthC / imageWidth;
+  const scaleY = heightC / imageHeight;
+
+  const canvasX = imageU * scaleX;
+  const canvasY = imageV * scaleY;
+
+  return [canvasX, canvasY];
+}
 
 export function worldToImage1 (worldCoord, origin, spacing, direction = [
   1, 0, 0,
