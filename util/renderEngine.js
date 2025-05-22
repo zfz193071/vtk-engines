@@ -6,17 +6,19 @@ import CIMG from './cimg.js';
 import LOAD from './loadImg.js';
 // 用于存储和管理图像数据及相关信息
 import DataWithInfo from './tDataWithInfo.js';
+import { getNewAxesFromPlane } from './tools.js';
 // 用于进行 4x4 矩阵操作
-const { mat4 } = glMatrix
+const { mat4, vec3 } = glMatrix
 class RenderEngine {
-    // 类的构造函数，接收三个参数：rootDom（根 DOM 元素）、para（属性参数）和 GPARA（全局参数）
-    constructor(rootDom, para, GPARA) {
+    constructor(rootDom, para, GPARA, key) {
 
         if (!rootDom) return
         let canvasDom = rootDom.querySelector("canvas")
         let divDom = rootDom.querySelector("div")
         this.#vtkRootDom = divDom
         this.#GPARA = GPARA
+        this.#center = GPARA.crossSectionState.center
+        this.#plane = GPARA.crossSectionState.planes.find(a => a.name === key)
 
         if (!canvasDom) this.#renderCanvas = document.createElement("canvas")
         else this.#renderCanvas = canvasDom
@@ -67,6 +69,8 @@ class RenderEngine {
         this.#catcherEngine.setRender(this)
 
         this.isOrthogonalRotation = false; // 添加开关变量
+
+        this.#key = key
     }
     setOrthogonalRotation (enabled) {
         this.isOrthogonalRotation = enabled;
@@ -94,6 +98,8 @@ class RenderEngine {
     #hideCanvas1 = null
     #hideCanvas2 = null
     #GPARA = null
+    #center = null
+    #plane = null
     #key = null
 
     // 属性
@@ -135,6 +141,10 @@ class RenderEngine {
     #colorS = "#3470d8"
     #colorC = "#cd9700"
     #colorT = "#8a00da"
+
+    #colorX = "#ff0000"
+    #colorY = "#0000ff"
+    #colorZ = "#00ff00"
     // 十字线样式
     #positionLine = {
         // 十字定位线
@@ -217,10 +227,6 @@ class RenderEngine {
         camera.setFocalPoint(0, 0, 0);   //当前的十字位置点
         let { newX, newY, newZ, newCenter } = this.#newaxes
         camera.setPosition(-newZ[0], -newZ[1], -newZ[2]);  //相机的位置
-        console.log('test key', this.#key)
-        console.log("test this.#newaxes", this.#newaxes)
-        console.log('test position: ', -newZ[0], -newZ[1], -newZ[2])
-        console.log('test viewUp: ', -newY[0], -newY[1], -newY[2])
         camera.setViewUp(-newY[0], -newY[1], -newY[2])   //视角的方向
         this.#vtkRenderer.setActiveCamera(camera)
         this.#vtkRenderer.resetCamera()
@@ -327,18 +333,7 @@ class RenderEngine {
         let volumeSpacing = patientVolume.getSpacing()
         let clipPlaneNormal1, clipPlaneNormal2, clipPlaneOrigin1 = [], clipPlaneOrigin2 = []
         // 通过体素位置和旋转角度，计算一个 变换矩阵（4x4），描述了当前视图的方向和原点
-        const axes = this.getAxes(volumeOrigin, volumeSpacing, crossPosOnImage, rotateAngelGlobal)
-        // 从 4×4 的 axes 矩阵中提取：
-        // newX：X轴方向（横向线方向）
-        // newY：Y轴方向（纵向线方向）
-        // newZ：Z轴方向（层厚方向）
-        // newCenter：当前截面中心在世界坐标中的位置
-        let newX = [axes[0], axes[1], axes[2]]
-        let newY = [axes[4], axes[5], axes[6]]
-        let newZ = [axes[8], axes[9], axes[10]]
-        //截取平面时坐标原点的世界坐标
-        let newCenter = [axes[12], axes[13], axes[14]]
-        // 存储当前截面坐标系统，用于其他模块（比如拖动、旋转十字线）
+        const { newX, newY, newZ, newCenter } = getNewAxesFromPlane(this.#center, this.#plane.normal, this.#plane.viewUp)
         this.#newaxes = { newX, newY, newZ, newCenter }
         // 根据当前视图模式（T/C/S），获取当前方向上的层厚
         this.#thickness = thicknessArr[this.#curViewMod]
@@ -554,7 +549,8 @@ class RenderEngine {
         // 0 0 1 0  
         // 0 0 0 1 
         // 调用 getAxes 方法计算坐标轴，设置重采样轴和切片数量
-        let axes = this.getAxes(volumeOrigin, volumeSpacing, crossPosOnImage, rotateArr)
+        // let axes = this.getAxes(volumeOrigin, volumeSpacing, crossPosOnImage, rotateArr)
+        let axes = this.getNewAxes(volumeOrigin, volumeSpacing, crossPosOnImage, this.#plane.normal)
         imageReslice.setSlabNumberOfSlices(this.#thickness);
         imageReslice.setResliceAxes(axes)
         let obliqueSlice = imageReslice.getOutputData();
@@ -1158,6 +1154,31 @@ class RenderEngine {
     render3d () {
         this.#vtkRenderWindow.render()
         this.drawCrossOn3d()
+    }
+    getNewAxes (volumeOrigin, volumeSpacing, crossPosOnImage, normal) {
+        const moveToCross = [
+            volumeOrigin[0] + crossPosOnImage[0] * volumeSpacing[0],
+            volumeOrigin[1] + crossPosOnImage[1] * volumeSpacing[1],
+            volumeOrigin[2] + crossPosOnImage[2] * volumeSpacing[2]
+        ];
+
+        const zAxis = vec3.normalize([], normal);
+
+        // 构造一个与 zAxis 不平行的 up 方向（避免与 z 同方向）
+        const tempUp = Math.abs(zAxis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+
+        const xAxis = vec3.normalize([], vec3.cross([], tempUp, zAxis));  // x = up × z
+        const yAxis = vec3.normalize([], vec3.cross([], zAxis, xAxis));   // y = z × x
+
+        // 填入 mat4，前三列是三个坐标轴，最后一列是位移
+        const axes = mat4.fromValues(
+            xAxis[0], yAxis[0], zAxis[0], 0,
+            xAxis[1], yAxis[1], zAxis[1], 0,
+            xAxis[2], yAxis[2], zAxis[2], 0,
+            moveToCross[0], moveToCross[1], moveToCross[2], 1
+        );
+
+        return axes;
     }
     getAxes (volumeOrigin, volumeSpacing, crossPosOnImage, rotateAngelGlobal) {
         // 创建一个 4x4 的单位矩阵，用于存储变换后的坐标轴信息

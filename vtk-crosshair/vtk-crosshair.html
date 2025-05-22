@@ -155,10 +155,13 @@
       "pageT",
       "pageC",
       "pageS",
-      "crossSectionState",
+      "rotateT",
+      "rotateC",
+      "rotateS",
       "thickT",
       "thickC",
       "thickS",
+      "crossSectionState",
     ];
     const GPARA = {
       scale: 1,
@@ -167,6 +170,9 @@
       pageT: 10,
       pageC: 256,
       pageS: 256,
+      rotateT: 0,
+      rotateC: 0,
+      rotateS: 0,
       thickS: 1,
       thickC: 1,
       thickT: 1,
@@ -174,12 +180,16 @@
         center: [-0.5, -20, 30],
         planes: [
           {
-            name: "transverse",
+            name: "transverse-xy",
             normal: [0, 0.7071, 0.7071],
             viewUp: [0, -1, 0],
           },
-          { name: "coronal", normal: [0.7071, 0.7071, 0], viewUp: [0, 0, -1] },
-          { name: "sagittal", normal: [1, 0, 0], viewUp: [0, 0, -1] },
+          {
+            name: "coronal-xz",
+            normal: [0.7071, 0.7071, 0],
+            viewUp: [0, 0, -1],
+          },
+          { name: "sagittal-yz", normal: [1, 0, 0], viewUp: [0, 0, -1] },
         ],
       },
     };
@@ -202,7 +212,7 @@
 
         const centerInput = document.createElement("input");
         centerInput.type = "text";
-        centerInput.name = "center";
+        centerInput.name = "crossSectionState_center";
         centerInput.className = "paraSetor";
         centerInput.value = csState.center.join(", ");
         centerDiv.appendChild(centerInput);
@@ -221,7 +231,7 @@
 
           const normalInput = document.createElement("input");
           normalInput.type = "text";
-          normalInput.name = `${plane.name}_normal`;
+          normalInput.name = `crossSectionState_${plane.name}_normal`;
           normalInput.className = "paraSetor";
           normalInput.style.marginRight = "10px";
           normalInput.value = plane.normal.join(", ");
@@ -229,7 +239,7 @@
 
           const viewUpInput = document.createElement("input");
           viewUpInput.type = "text";
-          viewUpInput.name = `${plane.name}_viewUp`;
+          viewUpInput.name = `crossSectionState_${plane.name}_viewUp`;
           viewUpInput.className = "paraSetor";
           viewUpInput.value = plane.viewUp.join(", ");
           planeDiv.appendChild(viewUpInput);
@@ -267,7 +277,23 @@
     function changeParaSet() {
       let inputs = document.querySelectorAll(".paraSetor");
       for (let i = 0; i < inputs.length; i++) {
-        GPARA[inputs[i].id] = inputs[i].value;
+        const name = inputs[i].name;
+        if (name.startsWith("crossSectionState_")) {
+          const [_, plane, prop] = name.split("_");
+          const value = inputs[i].value.split(",").map(Number);
+          if (prop === "center") {
+            GPARA.crossSectionState.center = value;
+          } else {
+            const planeObj = GPARA.crossSectionState.planes.find(
+              (p) => p.name === plane
+            );
+            if (planeObj) {
+              planeObj[prop] = value;
+            }
+          }
+        } else {
+          GPARA[inputs[i].id] = Number(inputs[i].value);
+        }
       }
       GPARA.value = { ...GPARA };
     }

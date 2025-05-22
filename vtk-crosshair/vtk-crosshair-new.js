@@ -398,10 +398,6 @@ async function start () {
             scalarRange,
             1.0
         );
-        const canvas = viewport.container.querySelector('canvas');
-        const [canvasWidth, canvasHeight] = [canvas.width, canvas.height];
-
-        console.log("test canvasWidth, canvasHeight: ", canvasWidth, canvasHeight);
     });
 
     // ✅ 2. 初始化三维视图，叠加三个截面

@@ -11,6 +11,7 @@ import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import RenderEngine from "../util/renderEngine.js";
 import DataWithInfo from "../util/tDataWithInfo.js";
 import LOCALDATA from "../util/loadLocalData.js";
+import { getNewAxesFromPlane, setMapperActor } from '../util/tools.js';
 const { mat4 } = glMatrix
 
 //初始化render
@@ -28,13 +29,13 @@ const renderInit = {
 }
 const viewports = {
     "transverse-xy": {
-        renderEngine: new RenderEngine(dom1, renderInit, GPARA)
+        renderEngine: new RenderEngine(dom1, renderInit, GPARA, "transverse-xy")
     },
     "coronal-xz": {
-        renderEngine: new RenderEngine(dom2, renderInit, GPARA)
+        renderEngine: new RenderEngine(dom2, renderInit, GPARA, "coronal-xz")
     },
     "sagittal-yz": {
-        renderEngine: new RenderEngine(dom3, renderInit, GPARA)
+        renderEngine: new RenderEngine(dom3, renderInit, GPARA, "sagittal-yz")
     }
 }
 
@@ -42,6 +43,8 @@ const viewportsKeys = Object.keys(viewports)
 
 const Selectors = document.getElementsByClassName("optSelector")
 let currentSelectorName = null
+
+let imageData = null
 //增加点击监听
 for (let i = 0; i < Selectors.length; i++) {
     Selectors[i].addEventListener("click", function () {
@@ -88,8 +91,7 @@ Object.defineProperty(GPARA, 'value', {
     }
 });
 
-//全局变量
-let seriesInfo, testData, localFlag = true, patientVolume, testActor
+
 
 
 function renderAll_2D () {
@@ -145,28 +147,111 @@ async function start () {
     const testLocalCube_sagittal = new VtkVolumeActorClass(testLocalData.Para, vtk)
     viewports["sagittal-yz"].renderEngine.setMapperActor(testLocalCube_sagittal)
     const testLocaCube3d = new VtkVolumeActorClass(testLocalData.Para, vtk)
+
+    imageData = testLocaCube3d.patientVolume
     //初始化操作
     selectOpt(Selectors[Selectors.length - 1])
     //3D渲染
-    render3DVR(testLocaCube3d.Actor)
+    render3DVR()
     renderAll()
+}
+function getScalarRange (scalars) {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < scalars.length; i++) {
+        const val = scalars[i];
+        if (val < min) min = val;
+        if (val > max) max = val;
+    }
+    return [min, max];
 }
 function render3DVR (actor) {
     const view3d = document.getElementById("render_3d");
-    const fullScreenRenderer = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
+    const fullScreenRenderer3D = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
         rootContainer: view3d,
         containerStyle: {
             height: '100%',
             width: '100%'
         },
-        background: [0, 0, 0]
+        background: [0.1, 0.1, 0.1]
     })
-    const renderer = fullScreenRenderer.getRenderer()
-    renderer.addVolume(actor)
-    const renderWindow = fullScreenRenderer.getRenderWindow()
-    renderer.resetCamera()
-    renderWindow.render()
+
+    const renderer3D = fullScreenRenderer3D.getRenderer();
+    const renderWindow3D = fullScreenRenderer3D.getRenderWindow();
+    const camera3D = renderer3D.getActiveCamera();
+
+    const bounds = imageData.getBounds();
+    const size = [
+        bounds[1] - bounds[0],
+        bounds[3] - bounds[2],
+        bounds[5] - bounds[4],
+    ];
+
+    const scalars = imageData.getPointData().getScalars().getData();
+    const scalarRange = getScalarRange(scalars);
+
+    let ww = Number(GPARA.ww);
+    let wl = Number(GPARA.wl);
+
+    if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
+        wl = (scalarRange[1] + scalarRange[0]) / 2;
+        ww = (scalarRange[1] - scalarRange[0]) / 2;
+    }
+    const center = GPARA.crossSectionState.center;
+    GPARA.crossSectionState.planes.forEach(cfg => {
+        addCrossSectionActorTo3DRenderer(
+            renderer3D,
+            imageData,
+            cfg.normal,
+            cfg.viewUp,
+            center,
+            scalarRange,
+            ww,
+            wl,
+            1.0
+        );
+    });
+    const diagonal = Math.sqrt(size[0] ** 2 + size[1] ** 2 + size[2] ** 2);
+    camera3D.setFocalPoint(...center);
+    camera3D.setPosition(center[0] + diagonal, center[1] + diagonal, center[2] + diagonal);
+    camera3D.setViewUp(0, 0, 1);
+    renderer3D.resetCamera();
+    renderWindow3D.render();
+
     console.log('3d render finished')
 }
+function addCrossSectionActorTo3DRenderer (renderer, imageData, normal, viewUp, center, scalarRange, ww, wl, thickness = 1.0) {
+    const { newX, newY, newZ, newCenter } = getNewAxesFromPlane(center, normal, viewUp);
 
+    const mapper = vtk.Rendering.Core.vtkVolumeMapper.newInstance();
+    mapper.setInputData(imageData);
+
+    const half = thickness / 2;
+    const offset = newZ.map(n => n * half);
+
+    const plane1 = vtk.Common.DataModel.vtkPlane.newInstance({
+        origin: [
+            newCenter[0] - offset[0],
+            newCenter[1] - offset[1],
+            newCenter[2] - offset[2],
+        ],
+        normal: newZ,
+    });
+
+    const plane2 = vtk.Common.DataModel.vtkPlane.newInstance({
+        origin: [
+            newCenter[0] + offset[0],
+            newCenter[1] + offset[1],
+            newCenter[2] + offset[2],
+        ],
+        normal: newZ.map(n => -n),
+    });
+
+    mapper.removeAllClippingPlanes();
+    mapper.addClippingPlane(plane1);
+    mapper.addClippingPlane(plane2);
+
+    const volumeActor = setMapperActor(mapper, scalarRange, ww, wl, vtk);
+    renderer.addVolume(volumeActor);
+}
 start()
