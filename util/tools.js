@@ -43,51 +43,16 @@ export function multiplyMatVec (m, v) {
   ];
 }
 // 计算方向在体积内的最大正负延伸长度
-export function getLineWithinBounds (center, dir, bounds, maxPhysicalLength = Infinity) {
-  let minT = -Infinity;
-  let maxT = Infinity;
+export function getLineWithoutBounds (center, dir, extensionLength = 3000) {
+  // 归一化方向向量，避免不同长度导致不一致
+  const dirLength = Math.sqrt(dir[0] ** 2 + dir[1] ** 2 + dir[2] ** 2);
+  if (dirLength < 1e-6) return null;
 
-  for (let i = 0; i < 3; i++) {
-    const origin = center[i];
-    const d = dir[i];
+  const normDir = dir.map((d) => d / dirLength);
 
-    if (Math.abs(d) < 1e-6) {
-      // 如果方向分量为0，平行于该轴
-      // 判断中心点是否在bounds内
-      if (origin < bounds[i * 2] || origin > bounds[i * 2 + 1]) {
-        return null; // 无交点
-      }
-      continue;
-    }
-
-    const t1 = (bounds[i * 2] - origin) / d;
-    const t2 = (bounds[i * 2 + 1] - origin) / d;
-
-    const tMin = Math.min(t1, t2);
-    const tMax = Math.max(t1, t2);
-
-    if (tMin > minT) minT = tMin;
-    if (tMax < maxT) maxT = tMax;
-  }
-
-  if (minT > maxT) {
-    return null; // 没有交点
-  }
-
-  // 根据 bounds 计算出的最大线段长度
-  const boundLength = maxT - minT;
-
-  // 确定线段长度，不能超过视口物理长度，同时不能超过 bounds 长度
-  const halfLength = Math.min(boundLength / 2, maxPhysicalLength / 2);
-
-  // 上面写得有点复杂，换一种更简单的写法：
-  // 线段以 (center + dir * (minT + boundLength / 2)) 为中点
-  // 方向上各延伸 halfLength 长度
-  const midT = (minT + maxT) / 2;
-  const midpoint = center.map((c, i) => c + dir[i] * midT);
-
-  const point1 = midpoint.map((c, i) => c - dir[i] * halfLength);
-  const point2 = midpoint.map((c, i) => c + dir[i] * halfLength);
+  // 延伸线段（看起来无限长）
+  const point1 = center.map((c, i) => c - normDir[i] * extensionLength);
+  const point2 = center.map((c, i) => c + normDir[i] * extensionLength);
 
   return [point1, point2];
 }

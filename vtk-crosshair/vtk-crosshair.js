@@ -120,12 +120,12 @@ function renderAll_3D () {
     let rotateAngelGlobal = [Number(GPARA.rotateT) * Math.PI / 180, Number(GPARA.rotateC) * Math.PI / 180, Number(GPARA.rotateS) * Math.PI / 180]
     for (let i = 0; i < viewportsKeys.length; i++) {
         let key = viewportsKeys[i]
+        viewports[key].renderEngine.setImageData(imageData)
         viewports[key].renderEngine.setWWWL(ww, wl)
         viewports[key].renderEngine.setCurrenViewMod(i)
         viewports[key].renderEngine.setCross(crossPosOnImage, thickness, rotateAngelGlobal)
         viewports[key].renderEngine.setScale3D(scale, rotateAngelGlobal)
         viewports[key].renderEngine.render3d()
-        viewports[key].renderEngine.setKey(key)
     }
 }
 

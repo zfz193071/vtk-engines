@@ -1,7 +1,7 @@
 import VtkVolumeActorClass from '../util/vtkVolumeActor.js';
 import LOCALDATA from "../util/loadLocalData.js";
 const { vec3 } = glMatrix
-import { canvasToImage, imageToWorld, getLineWithinBounds, getAxisMapFromCamera, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
+import { canvasToImage, imageToWorld, getLineWithoutBounds, getAxisMapFromCamera, worldToImage, getNewAxesFromPlane, getScalarRange, rotateVector, setMapperActor } from "../util/tools.js";
 
 // 三个容器dom
 const contents = document.getElementsByClassName("content")
@@ -105,18 +105,6 @@ function drawProjectedLineInCanvas (viewport, worldP1, worldP2, color = 'red') {
 
 function drawAllCrossLines (center) {
     const planeNames = ['transverse', 'coronal', 'sagittal'];
-
-    const origin = [-140.908, -164.227, 2.71689];
-    const spacing = [0.5469, 0.5469, 5.538457307692307];
-    const extent = [0, 511, 0, 511, 0, 25];
-    const bounds = [
-        origin[0], origin[0] + spacing[0] * (extent[1] - extent[0]),
-        origin[1], origin[1] + spacing[1] * (extent[3] - extent[2]),
-        origin[2], origin[2] + spacing[2] * (extent[5] - extent[4]),
-    ];
-
-    // const bounds = imageData.getBounds(); // 放在最外层，只计算一次
-
     planeNames.forEach(target => {
         const viewport = viewports[target];
         viewport.plane = crossSectionState.planes.find(p => p.name === target);
@@ -147,12 +135,7 @@ function drawAllCrossLines (center) {
 
             const unitDir = dir.map(d => d / magnitude);
 
-            const physicalWidth = widthC * viewport.pixelSpacingX;
-            const physicalHeight = heightC * viewport.pixelSpacingY;
-            const physicalLength = Math.sqrt(physicalWidth ** 2 + physicalHeight ** 2);
-
-            // 自动根据 image bounds 获取能完全落在体积内的线段
-            const clipped = getLineWithinBounds(center, unitDir, bounds, physicalLength);
+            const clipped = getLineWithoutBounds(center, unitDir);
             if (!clipped) {
                 console.warn(`投影线 ${target} ∩ ${otherName} 完全在体积外，跳过`);
                 return;
