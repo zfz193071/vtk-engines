@@ -6,7 +6,7 @@ import CIMG from './cimg.js';
 import LOAD from './loadImg.js';
 // 用于存储和管理图像数据及相关信息
 import DataWithInfo from './tDataWithInfo.js';
-import { getNewAxesFromPlane, getLineWithoutBounds } from './tools.js';
+import { getNewAxesFromPlane, getLineWithoutBounds, splitLineAtCenterGap } from './tools.js';
 // 用于进行 4x4 矩阵操作
 const { mat4, vec3 } = glMatrix
 
@@ -942,11 +942,20 @@ class RenderEngine {
             let x2 = displayCoords2[0] * widthC
             let y2 = (1 - displayCoords2[1]) * heightC
             let { dottedLine1, dottedLine2, thickLine } = this.#positionLine["curViewMod" + this.#curViewMod]
+
+            const CD = 5
+            const [seg1, seg2] = splitLineAtCenterGap(x1, y1, x2, y2, CD);
             line.push({
                 strokeStyle: lineColors[otherPlane.name],
-                c: { x1, y1, x2, y2 },
-                dottSytle: i === 0 ? dottedLine1 : dottedLine2
-            })
+                c: seg1,
+                dottSytle: i === 0 ? dottedLine1 : dottedLine2,
+            });
+
+            line.push({
+                strokeStyle: lineColors[otherPlane.name],
+                c: seg2,
+                dottSytle: i === 0 ? dottedLine1 : dottedLine2,
+            });
         });
 
 

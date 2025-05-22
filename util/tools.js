@@ -590,3 +590,39 @@ export function imageToWorld (imageData, ijk) {
   ];
 }
 
+
+export function splitLineAtCenterGap (x1, y1, x2, y2, CD) {
+  // 计算中点
+  const mx = (x1 + x2) / 2;
+  const my = (y1 + y2) / 2;
+
+  // 单位方向向量
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const ux = dx / length;
+  const uy = dy / length;
+
+  // 推 CD 距离
+  const gapX = ux * CD;
+  const gapY = uy * CD;
+
+  // 第一条线段：从起点到中心-CD
+  const seg1 = {
+    x1: x1,
+    y1: y1,
+    x2: mx - gapX,
+    y2: my - gapY,
+  };
+
+  // 第二条线段：从中心+CD 到终点
+  const seg2 = {
+    x1: mx + gapX,
+    y1: my + gapY,
+    x2: x2,
+    y2: y2,
+  };
+
+  return [seg1, seg2];
+}
+
