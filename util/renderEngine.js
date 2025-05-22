@@ -24,7 +24,6 @@ class RenderEngine {
         let divDom = rootDom.querySelector("div")
         this.#vtkRootDom = divDom
         this.#GPARA = GPARA
-        this.#center = GPARA.crossSectionState.center
         this.#plane = GPARA.crossSectionState.planes.find(a => a.name === key)
 
         if (!canvasDom) this.#renderCanvas = document.createElement("canvas")
@@ -105,7 +104,6 @@ class RenderEngine {
     #hideCanvas1 = null
     #hideCanvas2 = null
     #GPARA = null
-    #center = null
     #plane = null
     #key = null
 
@@ -355,8 +353,9 @@ class RenderEngine {
         // spacing 是每个像素/体素的物理间距
         let volumeSpacing = patientVolume.getSpacing()
         let clipPlaneNormal1, clipPlaneNormal2, clipPlaneOrigin1 = [], clipPlaneOrigin2 = []
-        // 通过体素位置和旋转角度，计算一个 变换矩阵（4x4），描述了当前视图的方向和原点
-        const { newX, newY, newZ, newCenter } = getNewAxesFromPlane(this.#center, this.#plane.normal, this.#plane.viewUp)
+        const center = this.#GPARA.crossSectionState.center
+        const { newX, newY, newZ, newCenter } = getNewAxesFromPlane(center, this.#plane.normal, this.#plane.viewUp)
+
         this.#newaxes = { newX, newY, newZ, newCenter }
         // 根据当前视图模式（T/C/S），获取当前方向上的层厚
         this.#thickness = thicknessArr[this.#curViewMod]
@@ -383,15 +382,10 @@ class RenderEngine {
         return Math.acos(dot / (magA * magB));
     }
 
-    // 声明三个私有变量，用于记录十字定位的移动、厚度调整和旋转操作的开始状态
     #crossMoveStart = false
     #crossThickStart = false
     #crossRotateStart = false
-    // 根据捕获器设置十字定位方法
-    // 根据 flag 参数的值（start、end 或 move）执行不同的操作
     setCrossFromCatcher (pos, flag) {
-        // 当 flag 为 start 时，根据选择的圆形或矩形设置相应的操作开始状态，
-        // 并将鼠标样式设置为不可见
         if (flag === "start") {
             if (this.#circleChoosed) {
                 this.#crossRotateStart = pos
@@ -410,8 +404,6 @@ class RenderEngine {
             //设置鼠标样式为不可见
             this.#catcherEngine.getCatrcherDom().style.cursor = "none"
         }
-        // 当 flag 为 end 时，重置操作开始状态，调用 drawCrossOn3d 方法绘制十字定位，
-        // 并将鼠标样式设置为默认
         if (flag === "end") {
             this.#crossMoveStart = false
             this.#crossThickStart = false
@@ -420,8 +412,6 @@ class RenderEngine {
             //设置鼠标样式为默认
             this.#catcherEngine.getCatrcherDom().style.cursor = "default"
         }
-        // 当 flag 为 move 时，根据操作开始状态执行相应的操作，
-        // 如移动十字定位、旋转十字定位或调整层厚，并更新 #GPARA 的值
         if (flag === "move") {
             if (this.#crossMoveStart) {
                 // 屏幕坐标转归一化坐标（0~1），并Y轴翻转
@@ -437,6 +427,7 @@ class RenderEngine {
                 temp.pageS = newCrossOnImage[0]
                 temp.pageC = newCrossOnImage[1]
                 temp.pageT = newCrossOnImage[2]
+                temp.crossSectionState.center = worldPos;
                 this.#GPARA.value = { ...temp }
             }
             if (this.#crossRotateStart) {
@@ -448,30 +439,6 @@ class RenderEngine {
                 let radian = this.getAngle(vecA, vecB)  //弧度
                 let angle = Math.round(radian * (180 / Math.PI))//转成角度
                 if (angle != 0) {
-
-                    const cross = this.#crossOn3DScreen;
-                    const crossAngleDiff = cross.yAngle - cross.xAngle;
-
-                    if (!this.isOrthogonalRotation) {
-                        // 非正交，判断旋转靠近哪一条线
-                        const angleToX = Math.abs(this.getAngleBetween(vecB, [Math.cos(cross.xAngle), Math.sin(cross.xAngle)]));
-                        const angleToY = Math.abs(this.getAngleBetween(vecB, [Math.cos(cross.yAngle), Math.sin(cross.yAngle)]));
-                        const rad = radian;
-
-                        if (angleToX < angleToY) {
-                            // 仅更新 X 轴的旋转角度
-                            cross.xAngle += rad;
-                        } else {
-                            // 仅更新 Y 轴的旋转角度
-                            cross.yAngle += rad;
-                        }
-                    } else {
-                        // 正交旋转，整体旋转并保持夹角不变
-                        cross.xAngle += radian;
-                        cross.yAngle = cross.xAngle + crossAngleDiff;
-                    }
-
-                    console.log('before this.#crossOn3DScreen', this.#crossOn3DScreen.xAngle, this.#crossOn3DScreen.yAngle)
                     let temp = this.#GPARA
                     if (this.#curViewMod === 0) {
                         temp.rotateT = Number(temp.rotateT) + angle
@@ -482,10 +449,8 @@ class RenderEngine {
                     if (this.#curViewMod === 2) {
                         temp.rotateS = Number(temp.rotateS) + angle
                     }
-
-                    this.#GPARA.value = { ...temp }
                     this.#crossRotateStart = { ...end }
-
+                    this.#GPARA.value = { ...temp }
                 }
             }
             if (this.#crossThickStart) {
@@ -914,7 +879,9 @@ class RenderEngine {
 
             const unitDir = dir.map(d => d / magnitude);
 
-            const clipped = getLineWithoutBounds(this.#center, unitDir);
+            const center = this.#GPARA.value ? this.#GPARA.value.crossSectionState.center : this.#GPARA.crossSectionState.center
+
+            const clipped = getLineWithoutBounds(center, unitDir);
 
 
             const [worldP1, worldP2] = clipped;
