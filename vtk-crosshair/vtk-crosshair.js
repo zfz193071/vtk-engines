@@ -14,6 +14,7 @@ import LOCALDATA from "../util/loadLocalData.js";
 import { getNewAxesFromPlane, setMapperActor } from '../util/tools.js';
 const { mat4 } = glMatrix
 
+window.isOrthogonalRotation = false
 //初始化render
 const contents = document.getElementsByClassName("content")
 const dom1 = document.getElementById("transverse-xy")
@@ -44,6 +45,10 @@ const viewportsKeys = Object.keys(viewports)
 const Selectors = document.getElementsByClassName("optSelector")
 let currentSelectorName = null
 
+document.getElementById("ORTHO_MODE").addEventListener("change", function (e) {
+    window.isOrthogonalRotation = e.target.checked
+})
+
 let imageData = null
 //增加点击监听
 for (let i = 0; i < Selectors.length; i++) {
@@ -53,6 +58,8 @@ for (let i = 0; i < Selectors.length; i++) {
     if (Selectors[i].getAttribute("name") === currentSelectorName) {
         Selectors[i].checked = true
     }
+
+
 }
 
 function selectOpt (dom) {
