@@ -879,9 +879,9 @@ class RenderEngine {
 
             const unitDir = dir.map(d => d / magnitude);
 
-            const center = this.#GPARA.value ? this.#GPARA.value.crossSectionState.center : this.#GPARA.crossSectionState.center
+            let { newCenter } = this.#newaxes
 
-            const clipped = getLineWithoutBounds(center, unitDir);
+            const clipped = getLineWithoutBounds(newCenter, unitDir);
 
 
             const [worldP1, worldP2] = clipped;
@@ -893,14 +893,14 @@ class RenderEngine {
                 worldP1[0],
                 worldP1[1],
                 worldP1[2],
-                widthC / heightC,
+                1,
             );
 
             const displayCoords2 = this.#vtkRenderer.worldToNormalizedDisplay(
                 worldP2[0],
                 worldP2[1],
                 worldP2[2],
-                widthC / heightC,
+                1,
             );
 
             let x1 = displayCoords1[0] * widthC
