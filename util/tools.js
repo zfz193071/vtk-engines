@@ -210,6 +210,38 @@ function imageToCanvasNew (imageCoord, planeName) {
 
   return [canvasX, canvasY];
 }
+export function rotateVectorAroundAxis (vec, axis, angleRad) {
+  // 归一化轴向量
+  const [ax, ay, az] = normalize(axis);
+
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
+
+  const dot = vec[0] * ax + vec[1] * ay + vec[2] * az;
+
+  return [
+    vec[0] * cosA + (ay * vec[2] - az * vec[1]) * sinA + ax * dot * (1 - cosA),
+    vec[1] * cosA + (az * vec[0] - ax * vec[2]) * sinA + ay * dot * (1 - cosA),
+    vec[2] * cosA + (ax * vec[1] - ay * vec[0]) * sinA + az * dot * (1 - cosA),
+  ];
+}
+
+export function getViewNormal (plane) {
+  // 叉乘：planeNormal x viewUp
+  const [a1, a2, a3] = plane.normal;
+  const [b1, b2, b3] = plane.viewUp;
+  const result = [
+    a2 * b3 - a3 * b2,
+    a3 * b1 - a1 * b3,
+    a1 * b2 - a2 * b1
+  ];
+  return normalize(result);
+}
+
+function normalize (v) {
+  const len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  return [v[0] / len, v[1] / len, v[2] / len];
+}
 
 export function worldToImage1 (worldCoord, origin, spacing, direction = [
   1, 0, 0,

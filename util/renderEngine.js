@@ -6,7 +6,7 @@ import CIMG from './cimg.js';
 import LOAD from './loadImg.js';
 // 用于存储和管理图像数据及相关信息
 import DataWithInfo from './tDataWithInfo.js';
-import { getNewAxesFromPlane, getLineWithoutBounds, getDistanceToSegment, splitLineAtCenterGap } from './tools.js';
+import { getNewAxesFromPlane, getLineWithoutBounds, getDistanceToSegment, rotateVectorAroundAxis, getViewNormal, splitLineAtCenterGap } from './tools.js';
 // 用于进行 4x4 矩阵操作
 const { mat4, vec3 } = glMatrix
 
@@ -106,6 +106,8 @@ class RenderEngine {
     #GPARA = null
     #plane = null
     #key = null
+
+    #currentRotatePlane = null
 
     // 属性
     #props = {
@@ -438,6 +440,16 @@ class RenderEngine {
                 let vecB = [end.x - center.x, end.y - center.y]
                 let radian = this.getAngle(vecA, vecB)  //弧度
                 let angle = Math.round(radian * (180 / Math.PI))//转成角度
+
+                const angleRad = Math.atan2(vecA[1], vecA[0]) - Math.atan2(vecB[1], vecB[0]);
+
+                const currentPlane = this.#GPARA.crossSectionState.planes.find(a => a.name == this.#currentRotatePlane)
+                const oldNormal = getViewNormal(currentPlane)
+                const newNormal = rotateVectorAroundAxis(currentPlane.normal, oldNormal, angleRad);
+
+                currentPlane.normal[0] = newNormal[0];
+                currentPlane.normal[1] = newNormal[1];
+                currentPlane.normal[2] = newNormal[2];
                 if (angle != 0) {
                     let temp = this.#GPARA
                     if (this.#curViewMod === 0) {
@@ -841,7 +853,6 @@ class RenderEngine {
         const line = []
         const circle = []
         const rect = []
-
         otherPlanes.forEach((otherPlane, i) => {
 
             // 交线方向
@@ -955,12 +966,14 @@ class RenderEngine {
                 circle.push({
                     c: { x: circlePos1.x, y: circlePos1.y, r: rForCircle },
                     ifFill: false,
+                    plane: otherPlane.name,
                     strokeStyle: lineColors[otherPlane.name],
                     fillStyle: lineColors[otherPlane.name],
                 });
                 circle.push({
                     c: { x: circlePos2.x, y: circlePos2.y, r: rForCircle },
                     ifFill: false,
+                    plane: otherPlane.name,
                     strokeStyle: lineColors[otherPlane.name],
                     fillStyle: lineColors[otherPlane.name],
                 });
@@ -981,12 +994,14 @@ class RenderEngine {
                 rect.push({
                     c: { x: rectPos1.x, y: rectPos1.y, r: rForRect },
                     ifFill: false,
+                    plane: otherPlane.name,
                     strokeStyle: lineColors[otherPlane.name],
                     fillStyle: lineColors[otherPlane.name],
                 });
                 rect.push({
                     c: { x: rectPos2.x, y: rectPos2.y, r: rForRect },
                     ifFill: false,
+                    plane: otherPlane.name,
                     strokeStyle: lineColors[otherPlane.name],
                     fillStyle: lineColors[otherPlane.name],
                 });
@@ -1010,6 +1025,7 @@ class RenderEngine {
                 if (x && y && Math.pow(circle[i].c.x - x, 2) + Math.pow(circle[i].c.y - y, 2) <= Math.pow(findRange, 2)) {
                     circle[i].ifFill = true
                     this.#circleChoosed = this.canvseToScreen(circle[i].c, imatrix)
+                    this.#currentRotatePlane = circle[i].plane
                 }
                 if (this.#crossRotateStart) {
                     circle[i].ifFill = true
