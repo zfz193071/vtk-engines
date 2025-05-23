@@ -6,7 +6,7 @@ import CIMG from './cimg.js';
 import LOAD from './loadImg.js';
 // 用于存储和管理图像数据及相关信息
 import DataWithInfo from './tDataWithInfo.js';
-import { getNewAxesFromPlane, getLineWithoutBounds, splitLineAtCenterGap } from './tools.js';
+import { getNewAxesFromPlane, getLineWithoutBounds, getDistanceToSegment, splitLineAtCenterGap } from './tools.js';
 // 用于进行 4x4 矩阵操作
 const { mat4, vec3 } = glMatrix
 
@@ -826,28 +826,6 @@ class RenderEngine {
         let canvasPos = {}
         const transform = ctx.getTransform()
         const imatrix = transform.invertSelf()
-        if (screenPos.x && screenPos.y) {
-            canvasPos = this.screenToCanvas(screenPos, imatrix)
-            let { x, y } = canvasPos
-            if (x && y) {
-                // 判断鼠标靠近中心、厚度边缘位置，是否需要高亮 circle 或 rect
-                // circle 显示四角交互按钮，交互状态下可填充
-
-                // rect 显示厚度的可拖拽点，画小矩形判断鼠标是否选中
-                if (Math.abs(x) < findRange || Math.abs(y) < findRange) {
-                    flag.circleShow = true
-                    flag.rectShow = true
-                }
-                if (thicknessX > 1 && (Math.abs(y - thicknessX) < findRange || Math.abs(y + thicknessX) < findRange)) {
-                    flag.circleShow = true
-                    flag.rectShow = true
-                }
-                if (thicknessY > 1 && (Math.abs(x - thicknessY) < findRange || Math.abs(x + thicknessY) < findRange)) {
-                    flag.circleShow = true
-                    flag.rectShow = true
-                }
-            }
-        }
 
         if (this.#crossRotateStart) {
             flag.circleShow = true
@@ -860,7 +838,9 @@ class RenderEngine {
 
         const otherPlanes = this.getOtherPlanes()
         const targetNormal = this.#plane.normal
-        let line = []
+        const line = []
+        const circle = []
+        const rect = []
 
         otherPlanes.forEach((otherPlane, i) => {
 
@@ -923,6 +903,95 @@ class RenderEngine {
                 c: seg2,
                 dottSytle: i === 0 ? dottedLine1 : dottedLine2,
             });
+
+
+            if (screenPos.x && screenPos.y) {
+                canvasPos = this.screenToCanvas(screenPos, imatrix)
+                let { x, y } = canvasPos
+                if (x && y) {
+                    const d1 = getDistanceToSegment(x, y, x1, y1, x2, y2);
+                    if (d1 < findRange) {
+                        flag.circleShow = true;
+                        flag.rectShow = true;
+                    }
+                    if (thicknessX > 1 && (Math.abs(y - thicknessX) < findRange || Math.abs(y + thicknessX) < findRange)) {
+                        flag.circleShow = true
+                        flag.rectShow = true
+                    }
+                    if (thicknessY > 1 && (Math.abs(x - thicknessY) < findRange || Math.abs(x + thicknessY) < findRange)) {
+                        flag.circleShow = true
+                        flag.rectShow = true
+                    }
+                }
+            }
+
+            // 计算线段中点
+            const midX = (x1 + x2) / 2;
+            const midY = (y1 + y2) / 2;
+
+            // 线段方向单位向量
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const ux = dx / length;
+            const uy = dy / length;
+
+
+            const rectOffset = 50;
+
+            if (flag.circleShow) {
+                const circleOffset = 100;
+                // 计算两个圆的位置（中心点向两边偏移）
+                const circlePos1 = {
+                    x: midX + ux * circleOffset,
+                    y: midY + uy * circleOffset,
+                };
+                const circlePos2 = {
+                    x: midX - ux * circleOffset,
+                    y: midY - uy * circleOffset,
+                };
+
+                // 添加两个圆
+                circle.push({
+                    c: { x: circlePos1.x, y: circlePos1.y, r: rForCircle },
+                    ifFill: false,
+                    strokeStyle: lineColors[otherPlane.name],
+                    fillStyle: lineColors[otherPlane.name],
+                });
+                circle.push({
+                    c: { x: circlePos2.x, y: circlePos2.y, r: rForCircle },
+                    ifFill: false,
+                    strokeStyle: lineColors[otherPlane.name],
+                    fillStyle: lineColors[otherPlane.name],
+                });
+            }
+
+
+            if (flag.rectShow) {
+                const rectPos1 = {
+                    x: midX + ux * rectOffset,
+                    y: midY + uy * rectOffset,
+                };
+                const rectPos2 = {
+                    x: midX - ux * rectOffset,
+                    y: midY - uy * rectOffset,
+                };
+
+                // 添加两个矩形
+                rect.push({
+                    c: { x: rectPos1.x, y: rectPos1.y, r: rForRect },
+                    ifFill: false,
+                    strokeStyle: lineColors[otherPlane.name],
+                    fillStyle: lineColors[otherPlane.name],
+                });
+                rect.push({
+                    c: { x: rectPos2.x, y: rectPos2.y, r: rForRect },
+                    ifFill: false,
+                    strokeStyle: lineColors[otherPlane.name],
+                    fillStyle: lineColors[otherPlane.name],
+                });
+            }
+
         });
 
 
@@ -932,7 +1001,48 @@ class RenderEngine {
             this.drawLine(ctx, line[i].c, line[i].dottSytle, line[i].strokeStyle)
         }
 
-        //先画X轴
+        this.#circleChoosed = null
+        if (circle.length) {
+            for (let i = 0; i < circle.length; i++) {
+                let { x, y } = canvasPos
+                // 判断鼠标是否在圆附近：用欧几里得距离判断是否在可点击范围
+                // 点 (x, y) 到圆心 (x_0, y_0) 的距离的平方小于或等于半径的平方
+                if (x && y && Math.pow(circle[i].c.x - x, 2) + Math.pow(circle[i].c.y - y, 2) <= Math.pow(findRange, 2)) {
+                    circle[i].ifFill = true
+                    this.#circleChoosed = this.canvseToScreen(circle[i].c, imatrix)
+                }
+                if (this.#crossRotateStart) {
+                    circle[i].ifFill = true
+                }
+                this.drawCircle(ctx, circle[i].c, circle[i].ifFill, circle[i].strokeStyle, circle[i].fillStyle)
+            }
+        }
+
+
+
+        this.#rectChoosed = null
+        let indexFromXtoY
+        if (rect.length) {
+            for (let i = 0; i < rect.length; i++) {
+                let { x, y } = canvasPos
+                if (x && y && Math.abs(rect[i].c.x - x) <= findRange && Math.abs(rect[i].c.y - y) <= findRange) {
+                    rect[i].ifFill = true
+                    this.#rectChoosed = this.canvseToScreen(rect[i].c, imatrix)
+                    this.#rectChoosed.type = rect[i].type
+                    if (i < indexFromXtoY) {
+                        this.#rectChoosed.axes = "x"
+                    } else {
+                        this.#rectChoosed.axes = "y"
+                    }
+                    this.#rectChoosed.imatrix = imatrix
+                }
+                if (this.#crossThickStart) {
+                    rect[i].ifFill = true
+                }
+                this.drawRect(ctx, rect[i].c, rect[i].ifFill, rect[i].strokeStyle, rect[i].fillStyle)
+            }
+        }
+
 
         ctx.restore();
     }
