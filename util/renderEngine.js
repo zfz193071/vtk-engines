@@ -74,7 +74,12 @@ class RenderEngine {
         //初始化catcher的操作
         this.#catcherEngine.setRender(this)
 
+        this.isOrthogonalRotation = false; // 添加开关变量
+
         this.#key = key
+    }
+    setOrthogonalRotation (enabled) {
+        this.isOrthogonalRotation = enabled;
     }
     // 声明一系列私有属性，用于存储各种状态和参数，包括捕获器引擎、渲染画布、渲染上下文、渲染窗口、渲染器
     #catcherEngine = null
@@ -103,7 +108,6 @@ class RenderEngine {
     #key = null
 
     #currentRotatePlane = null
-    #currentUnRotatePlane = null
 
     // 属性
     #props = {
@@ -406,7 +410,7 @@ class RenderEngine {
             this.#crossMoveStart = false
             this.#crossThickStart = false
             this.#crossRotateStart = false
-            this.drawNewCrossOn3d(pos)
+            this.drawCrossOn3d(pos)
             //设置鼠标样式为默认
             this.#catcherEngine.getCatrcherDom().style.cursor = "default"
         }
@@ -439,40 +443,13 @@ class RenderEngine {
 
                 const angleRad = Math.atan2(vecA[1], vecA[0]) - Math.atan2(vecB[1], vecB[0]);
 
-                if (window.isOrthogonalRotation) {
-                    // 获取当前两个正交切面
-                    const planes = this.#GPARA.crossSectionState.planes;
-                    const orthogonalPlane = planes.find(
-                        a => a.name !== this.#currentUnRotatePlane && a.name !== this.#currentRotatePlane
-                    );
+                const currentPlane = this.#GPARA.crossSectionState.planes.find(a => a.name == this.#currentRotatePlane)
+                const oldNormal = getViewNormal(currentPlane)
+                const newNormal = rotateVectorAroundAxis(currentPlane.normal, oldNormal, angleRad);
 
-                    // 找出要旋转的两个切面
-                    const currentPlane = planes.find(p => p.name === this.#currentRotatePlane);
-
-                    const viewNormal = getViewNormal(currentPlane);
-                    const viewNormal1 = getViewNormal(orthogonalPlane)
-
-                    // 旋转当前面（正常逻辑）
-                    const newCurrentNormal = rotateVectorAroundAxis(currentPlane.normal, viewNormal, angleRad);
-                    currentPlane.normal[0] = newCurrentNormal[0];
-                    currentPlane.normal[1] = newCurrentNormal[1];
-                    currentPlane.normal[2] = newCurrentNormal[2];
-
-                    // 关键：为了保持夹角不变，另一个面也必须绕同一轴旋转同样角度
-                    const newOrthoNormal = rotateVectorAroundAxis(orthogonalPlane.normal, viewNormal1, angleRad);
-                    orthogonalPlane.normal[0] = newOrthoNormal[0];
-                    orthogonalPlane.normal[1] = newOrthoNormal[1];
-                    orthogonalPlane.normal[2] = newOrthoNormal[2];
-                } else {
-                    const currentPlane = this.#GPARA.crossSectionState.planes.find(a => a.name == this.#currentRotatePlane)
-                    const oldNormal = getViewNormal(currentPlane)
-                    const newNormal = rotateVectorAroundAxis(currentPlane.normal, oldNormal, angleRad);
-
-                    currentPlane.normal[0] = newNormal[0];
-                    currentPlane.normal[1] = newNormal[1];
-                    currentPlane.normal[2] = newNormal[2];
-                }
-
+                currentPlane.normal[0] = newNormal[0];
+                currentPlane.normal[1] = newNormal[1];
+                currentPlane.normal[2] = newNormal[2];
                 if (angle != 0) {
                     let temp = this.#GPARA
                     if (this.#curViewMod === 0) {
@@ -820,9 +797,10 @@ class RenderEngine {
     getOtherPlanes () {
         return GPARA.crossSectionState.planes.filter(n => n.name !== this.#key);
     }
-    drawNewCrossOn3d (screenPos = {}) {
+    drawCrossOn3d (screenPos = {}) {
         let ctx = this.#renderCanvas3D.getContext("2d")
         ctx.clearRect(0, 0, this.#renderCanvas3D.width, this.#renderCanvas3D.height)
+
         ctx.save();
 
         let Dis = 60, rForCircle = 5, rForRect = 4, findRange = 10
@@ -1048,13 +1026,7 @@ class RenderEngine {
                 if (x && y && Math.pow(circle[i].c.x - x, 2) + Math.pow(circle[i].c.y - y, 2) <= Math.pow(findRange, 2)) {
                     circle[i].ifFill = true
                     this.#circleChoosed = this.canvseToScreen(circle[i].c, imatrix)
-                    if (window.isOrthogonalRotation) {
-                        this.#currentRotatePlane = circle[i].plane
-                        this.#currentUnRotatePlane = this.#plane.name
-                    } else {
-                        this.#currentRotatePlane = circle[i].plane
-                    }
-
+                    this.#currentRotatePlane = circle[i].plane
                 }
                 if (this.#crossRotateStart) {
                     circle[i].ifFill = true
@@ -1092,7 +1064,7 @@ class RenderEngine {
         ctx.restore();
     }
 
-    drawCrossOn3d (screenPos = {}) {
+    drawOldCrossOn3d (screenPos = {}) {
 
         let ctx = this.#renderCanvas3D.getContext("2d")
         ctx.clearRect(0, 0, this.#renderCanvas3D.width, this.#renderCanvas3D.height)
@@ -1299,6 +1271,7 @@ class RenderEngine {
         //先画X轴
 
         ctx.restore();
+        this.drawNewCrossOn3d(screenPos)
     }
 
     drawLine (ctx, c, dottSytle, strokeStyle) {
@@ -1339,7 +1312,7 @@ class RenderEngine {
     }
     render3d () {
         this.#vtkRenderWindow.render()
-        this.drawNewCrossOn3d()
+        this.drawCrossOn3d()
     }
     getNewAxes (volumeOrigin, volumeSpacing, crossPosOnImage, normal) {
         const moveToCross = [

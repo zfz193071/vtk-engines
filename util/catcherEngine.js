@@ -130,7 +130,7 @@ class CatcherEngine {
         console.log('zoom after', JSON.stringify(this.#GPARA.scale))
     }
     handleFindCross (pos) {
-        this.#renderEngine.drawNewCrossOn3d(pos)
+        this.#renderEngine.drawCrossOn3d(pos)
     }
     handleSetCross (pos, flag) {
         const isChecked = document.getElementById('ORTHO_MODE').checked;
