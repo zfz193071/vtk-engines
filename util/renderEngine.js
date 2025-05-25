@@ -865,7 +865,6 @@ class RenderEngine {
 
             const magnitude = Math.sqrt(dir[0] ** 2 + dir[1] ** 2 + dir[2] ** 2);
             if (magnitude < 1e-6) {
-                console.warn(`Skipped line from ${target} ∩ ${otherPlane}, zero direction vector`);
                 return;
             }
 
