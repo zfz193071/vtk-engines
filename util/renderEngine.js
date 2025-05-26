@@ -108,6 +108,7 @@ class RenderEngine {
     #key = null
 
     #currentRotatePlane = null
+    #currentUnRotatePlane = null
 
     // 属性
     #props = {
@@ -433,7 +434,6 @@ class RenderEngine {
                 this.#GPARA.value = { ...temp }
             }
             if (this.#crossRotateStart) {
-
                 // 鼠标拖动时调用
                 let start = this.#crossRotateStart; // {x, y} 屏幕坐标
                 let end = pos; // {x, y} 屏幕坐标
@@ -497,13 +497,35 @@ class RenderEngine {
                         w * dot * (1 - cosA) + z * cosA + cross[2] * sinA,
                     ];
                 }
+                const planes = this.#GPARA.crossSectionState.planes;
+                const currentPlane = planes.find(p => p.name === this.#currentRotatePlane);
+                if (window.isOrthogonalRotation) {
+                    const orthogonalPlane = planes.find(
+                        a => a.name !== this.#currentUnRotatePlane && a.name !== this.#currentRotatePlane
+                    );
+                    // 旋转 currentPlane 的法向量
+                    const oldNormal = currentPlane.normal;
+                    const newNormal = rotateVectorAroundAxis(oldNormal, axis, angle);
+                    currentPlane.normal[0] = newNormal[0];
+                    currentPlane.normal[1] = newNormal[1];
+                    currentPlane.normal[2] = newNormal[2];
 
-                const currentPlane = this.#GPARA.crossSectionState.planes.find(a => a.name == this.#currentRotatePlane);
-                const oldNormal = currentPlane.normal;
-                const newNormal = rotateVectorAroundAxis(oldNormal, axis, angle);
-                currentPlane.normal[0] = newNormal[0];
-                currentPlane.normal[1] = newNormal[1];
-                currentPlane.normal[2] = newNormal[2];
+                    // 旋转 orthogonalPlane 的法向量（核心新增）
+                    if (orthogonalPlane) {
+                        const oldOrtNormal = orthogonalPlane.normal;
+                        const newOrtNormal = rotateVectorAroundAxis(oldOrtNormal, axis, angle);
+                        orthogonalPlane.normal[0] = newOrtNormal[0];
+                        orthogonalPlane.normal[1] = newOrtNormal[1];
+                        orthogonalPlane.normal[2] = newOrtNormal[2];
+                    }
+
+                } else {
+                    const oldNormal = currentPlane.normal;
+                    const newNormal = rotateVectorAroundAxis(oldNormal, axis, angle);
+                    currentPlane.normal[0] = newNormal[0];
+                    currentPlane.normal[1] = newNormal[1];
+                    currentPlane.normal[2] = newNormal[2];
+                }
                 if (angle != 0) {
                     let temp = this.#GPARA
                     if (this.#curViewMod === 0) {
@@ -1079,6 +1101,13 @@ class RenderEngine {
                 if (x && y && Math.pow(circle[i].c.x - x, 2) + Math.pow(circle[i].c.y - y, 2) <= Math.pow(findRange, 2)) {
                     circle[i].ifFill = true
                     this.#circleChoosed = this.canvseToScreen(circle[i].c, imatrix)
+
+                    if (window.isOrthogonalRotation) {
+                        this.#currentRotatePlane = circle[i].plane
+                        this.#currentUnRotatePlane = this.#plane.name
+                    } else {
+                        this.#currentRotatePlane = circle[i].plane
+                    }
                     this.#currentRotatePlane = circle[i].plane
                 }
                 if (this.#crossRotateStart) {
