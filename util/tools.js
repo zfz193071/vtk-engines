@@ -210,22 +210,31 @@ function imageToCanvasNew (imageCoord, planeName) {
 
   return [canvasX, canvasY];
 }
-export function rotateVectorAroundAxis (vec, axis, angleRad) {
-  // 归一化轴向量
-  const [ax, ay, az] = normalize(axis);
+export function rotateVectorAroundAxis (v, axis, rad) {
+  const [x, y, z] = v;
+  const [u, v1, w] = axis;
+  const cosA = Math.cos(rad);
+  const sinA = Math.sin(rad);
 
-  const cosA = Math.cos(angleRad);
-  const sinA = Math.sin(angleRad);
-
-  const dot = vec[0] * ax + vec[1] * ay + vec[2] * az;
+  const dot = x * u + y * v1 + z * w;
+  const cross = [
+    v1 * z - w * y,
+    w * x - u * z,
+    u * y - v1 * x,
+  ];
 
   return [
-    vec[0] * cosA + (ay * vec[2] - az * vec[1]) * sinA + ax * dot * (1 - cosA),
-    vec[1] * cosA + (az * vec[0] - ax * vec[2]) * sinA + ay * dot * (1 - cosA),
-    vec[2] * cosA + (ax * vec[1] - ay * vec[0]) * sinA + az * dot * (1 - cosA),
+    u * dot * (1 - cosA) + x * cosA + cross[0] * sinA,
+    v1 * dot * (1 - cosA) + y * cosA + cross[1] * sinA,
+    w * dot * (1 - cosA) + z * cosA + cross[2] * sinA,
   ];
 }
 
+export function normalizeAngle (angle) {
+  while (angle > Math.PI) angle -= 2 * Math.PI;
+  while (angle < -Math.PI) angle += 2 * Math.PI;
+  return angle;
+}
 export function getViewNormal (plane) {
   // 叉乘：planeNormal x viewUp
   const [a1, a2, a3] = plane.normal;

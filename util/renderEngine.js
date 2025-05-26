@@ -6,7 +6,7 @@ import CIMG from './cimg.js';
 import LOAD from './loadImg.js';
 // 用于存储和管理图像数据及相关信息
 import DataWithInfo from './tDataWithInfo.js';
-import { getNewAxesFromPlane, getLineWithoutBounds, getDistanceToSegment, rotateVectorAroundAxis, getViewNormal, splitLineAtCenterGap } from './tools.js';
+import { getNewAxesFromPlane, getLineWithoutBounds, getDistanceToSegment, rotateVectorAroundAxis, getViewNormal, normalizeAngle, splitLineAtCenterGap } from './tools.js';
 // 用于进行 4x4 矩阵操作
 const { mat4, vec3 } = glMatrix
 
@@ -433,20 +433,74 @@ class RenderEngine {
                 this.#GPARA.value = { ...temp }
             }
             if (this.#crossRotateStart) {
-                let center = { x: this.#crossOn3DScreen.x, y: this.#crossOn3DScreen.y }
-                let start = this.#crossRotateStart
-                let end = pos
-                let vecA = [start.x - center.x, start.y - center.y]
-                let vecB = [end.x - center.x, end.y - center.y]
-                let radian = this.getAngle(vecA, vecB)  //弧度
-                let angle = Math.round(radian * (180 / Math.PI))//转成角度
 
-                const angleRad = Math.atan2(vecA[1], vecA[0]) - Math.atan2(vecB[1], vecB[0]);
+                // 鼠标拖动时调用
+                let start = this.#crossRotateStart; // {x, y} 屏幕坐标
+                let end = pos; // {x, y} 屏幕坐标
 
-                const currentPlane = this.#GPARA.crossSectionState.planes.find(a => a.name == this.#currentRotatePlane)
-                const oldNormal = getViewNormal(currentPlane)
-                const newNormal = rotateVectorAroundAxis(currentPlane.normal, oldNormal, angleRad);
+                let screenPosNormalized1 = { x: start.x / this.#renderCanvas.width, y: 1 - start.y / this.#renderCanvas.height, z: this.#crossOn3DScreen.z }
+                const worldStart = this.#vtkRenderer.normalizedDisplayToWorld(screenPosNormalized1.x, screenPosNormalized1.y, screenPosNormalized1.z, 1);
+                let screenPosNormalized2 = { x: end.x / this.#renderCanvas.width, y: 1 - end.y / this.#renderCanvas.height, z: this.#crossOn3DScreen.z }
+                const worldEnd = this.#vtkRenderer.normalizedDisplayToWorld(screenPosNormalized2.x, screenPosNormalized2.y, screenPosNormalized2.z, 1);
 
+                // 2. 取旋转中心
+                const worldCenter = this.#GPARA.crossSectionState.center;
+
+                console.log("test worldStart, worldEnd, worldCenter", worldStart, worldEnd, worldCenter)
+
+                // 3. 计算球面向量
+                function normalize (v) {
+                    let len = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+                    return len < 1e-12 ? [0, 0, 0] : [v[0] / len, v[1] / len, v[2] / len];
+                }
+                const vecA = normalize([
+                    worldStart[0] - worldCenter[0],
+                    worldStart[1] - worldCenter[1],
+                    worldStart[2] - worldCenter[2],
+                ]);
+                const vecB = normalize([
+                    worldEnd[0] - worldCenter[0],
+                    worldEnd[1] - worldCenter[1],
+                    worldEnd[2] - worldCenter[2],
+                ]);
+
+                // 4. 旋转轴和角度
+                function cross (a, b) {
+                    return [
+                        a[1] * b[2] - a[2] * b[1],
+                        a[2] * b[0] - a[0] * b[2],
+                        a[0] * b[1] - a[1] * b[0],
+                    ];
+                }
+                const axis = normalize(cross(vecA, vecB));
+                let angle = Math.acos(
+                    Math.max(-1, Math.min(1, vecA[0] * vecB[0] + vecA[1] * vecB[1] + vecA[2] * vecB[2]))
+                );
+                if (isNaN(angle) || Math.abs(angle) < 1e-6) return;
+
+                // 5. 对法线旋转
+                function rotateVectorAroundAxis (v, axis, rad) {
+                    // Rodrigues' rotation formula
+                    const [x, y, z] = v;
+                    const [u, v1, w] = axis;
+                    const cosA = Math.cos(rad);
+                    const sinA = Math.sin(rad);
+                    const dot = x * u + y * v1 + z * w;
+                    const cross = [
+                        v1 * z - w * y,
+                        w * x - u * z,
+                        u * y - v1 * x,
+                    ];
+                    return [
+                        u * dot * (1 - cosA) + x * cosA + cross[0] * sinA,
+                        v1 * dot * (1 - cosA) + y * cosA + cross[1] * sinA,
+                        w * dot * (1 - cosA) + z * cosA + cross[2] * sinA,
+                    ];
+                }
+
+                const currentPlane = this.#GPARA.crossSectionState.planes.find(a => a.name == this.#currentRotatePlane);
+                const oldNormal = currentPlane.normal;
+                const newNormal = rotateVectorAroundAxis(oldNormal, axis, angle);
                 currentPlane.normal[0] = newNormal[0];
                 currentPlane.normal[1] = newNormal[1];
                 currentPlane.normal[2] = newNormal[2];
