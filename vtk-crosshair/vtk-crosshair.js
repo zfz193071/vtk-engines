@@ -85,7 +85,7 @@ Object.defineProperty(GPARA, 'value', {
     set: function (newValue) {
         //这里全局监听GPARA
         this._value = newValue;
-        // console.log('监听到渲染参数', newValue);
+        console.log('监听到渲染参数', newValue);
         //渲染组件上的值
         let keys = Object.keys(newValue)
         keys.forEach((ikey) => {
@@ -139,6 +139,7 @@ function renderAll_3D () {
 function renderAll () {
     renderAll_2D()
     renderAll_3D()
+    render3DVR()
 }
 
 
@@ -158,8 +159,6 @@ async function start () {
     imageData = testLocaCube3d.patientVolume
     //初始化操作
     selectOpt(Selectors[Selectors.length - 1])
-    //3D渲染
-    render3DVR()
     renderAll()
 }
 function getScalarRange (scalars) {
@@ -172,20 +171,54 @@ function getScalarRange (scalars) {
     }
     return [min, max];
 }
-function render3DVR (actor) {
-    const view3d = document.getElementById("render_3d");
-    const fullScreenRenderer3D = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
-        rootContainer: view3d,
-        containerStyle: {
-            height: '100%',
-            width: '100%'
-        },
-        background: [0.1, 0.1, 0.1]
-    })
 
-    const renderer3D = fullScreenRenderer3D.getRenderer();
-    const renderWindow3D = fullScreenRenderer3D.getRenderWindow();
-    const camera3D = renderer3D.getActiveCamera();
+
+let fullScreenRenderer3D = null;
+let renderer3D = null;
+let renderWindow3D = null;
+let camera3D = null;
+
+// 初始化渲染器，只做一次
+function init3DRenderer () {
+    if (!fullScreenRenderer3D) {
+        const view3d = document.getElementById("render_3d");
+        fullScreenRenderer3D = vtk.Rendering.Misc.vtkFullScreenRenderWindow.newInstance({
+            rootContainer: view3d,
+            containerStyle: {
+                height: '100%',
+                width: '100%'
+            },
+            background: [0.1, 0.1, 0.1]
+        });
+        renderer3D = fullScreenRenderer3D.getRenderer();
+        renderWindow3D = fullScreenRenderer3D.getRenderWindow();
+        camera3D = renderer3D.getActiveCamera();
+    }
+}
+function render3DVR () {
+    // 只初始化一次
+    init3DRenderer();
+
+    // 清空旧内容（关键！）
+    renderer3D.removeAllViewProps();
+
+    const worldCenter = GPARA.crossSectionState.center;
+    const sphereRadius = 10; // 设定你想要的半径
+
+    // 创建小球
+    const sphereSource = vtk.Filters.Sources.vtkSphereSource.newInstance({
+        center: worldCenter,
+        radius: sphereRadius,
+        thetaResolution: 32,
+        phiResolution: 32
+    });
+    const sphereMapper = vtk.Rendering.Core.vtkMapper.newInstance();
+    sphereMapper.setInputConnection(sphereSource.getOutputPort());
+    const sphereActor = vtk.Rendering.Core.vtkActor.newInstance();
+    sphereActor.setMapper(sphereMapper);
+    sphereActor.getProperty().setColor(0.9, 0.1, 0.1);
+    sphereActor.getProperty().setOpacity(0.7);
+    renderer3D.addActor(sphereActor);
 
     const bounds = imageData.getBounds();
     const size = [
@@ -193,13 +226,11 @@ function render3DVR (actor) {
         bounds[3] - bounds[2],
         bounds[5] - bounds[4],
     ];
-
     const scalars = imageData.getPointData().getScalars().getData();
     const scalarRange = getScalarRange(scalars);
 
     let ww = Number(GPARA.ww);
     let wl = Number(GPARA.wl);
-
     if (!ww || !wl || isNaN(ww) || isNaN(wl)) {
         wl = (scalarRange[1] + scalarRange[0]) / 2;
         ww = (scalarRange[1] - scalarRange[0]) / 2;
@@ -225,7 +256,7 @@ function render3DVR (actor) {
     renderer3D.resetCamera();
     renderWindow3D.render();
 
-    console.log('3d render finished')
+    console.log('3d render finished');
 }
 function addCrossSectionActorTo3DRenderer (renderer, imageData, normal, viewUp, center, scalarRange, ww, wl, thickness = 1.0) {
     const { newX, newY, newZ, newCenter } = getNewAxesFromPlane(center, normal, viewUp);

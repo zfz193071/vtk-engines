@@ -446,7 +446,6 @@ class RenderEngine {
                 // 2. 取旋转中心
                 const worldCenter = this.#GPARA.crossSectionState.center;
 
-                console.log("test worldStart, worldEnd, worldCenter", worldStart, worldEnd, worldCenter)
 
                 // 3. 计算球面向量
                 function normalize (v) {
