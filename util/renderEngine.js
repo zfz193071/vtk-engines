@@ -448,6 +448,8 @@ class RenderEngine {
         this.#crossThickStart = {
           axes: this.#rectChoosed.axes,
           imatrix: this.#rectChoosed.imatrix,
+          axisPoint: this.#rectChoosed.axisPoint,
+          start: pos,
         };
         this.#crossMoveStart = false;
         this.#crossRotateStart = false;
@@ -632,41 +634,44 @@ class RenderEngine {
         }
       }
       if (this.#crossThickStart) {
-        let { imatrix, axes } = this.#crossThickStart;
+        let { imatrix, axes, axisPoint, start } = this.#crossThickStart;
+        const { x1, y1, x2, y2 } = axisPoint;
         let end = this.screenToCanvas(pos, imatrix); //去除旋转的影响
-        let newThick;
-        if (axes == "x") {
-          newThick = Math.abs(end.y);
-        } else {
-          newThick = Math.abs(end.x);
-        }
+        // 1. 计算基准线的方向向量和法向量
+        let dx = x2 - x1,
+          dy = y2 - y1;
+        let len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-6) return;
+        let ux = dx / len,
+          uy = dy / len;
+        let nx = -uy,
+          ny = ux; // 法向量（垂直于基准线）
+
+        // 2. 鼠标拖动向量
+        let vx = end.x - start.x;
+        let vy = end.y - start.y;
+
+        // 3. 拖动在法向上的投影，决定厚度
+        let proj = vx * nx + vy * ny;
+        let newThick = Math.abs(proj);
+
+        // 4. 单位换算
         newThick =
           (2 * newThick * this.#initPixelSpacing) / Number(this.#GPARA.scale);
+
         let minThick = 1;
         let temp = this.#GPARA;
         if (this.#curViewMod === 0) {
-          if (axes === "x") {
-            temp.thickC = newThick;
-          }
-          if (axes === "y") {
-            temp.thickS = newThick;
-          }
+          if (axes === "x") temp.thickC = newThick;
+          if (axes === "y") temp.thickS = newThick;
         }
         if (this.#curViewMod === 1) {
-          if (axes === "x") {
-            temp.thickT = newThick;
-          }
-          if (axes === "y") {
-            temp.thickS = newThick;
-          }
+          if (axes === "x") temp.thickT = newThick;
+          if (axes === "y") temp.thickS = newThick;
         }
         if (this.#curViewMod === 2) {
-          if (axes === "x") {
-            temp.thickT = newThick;
-          }
-          if (axes === "y") {
-            temp.thickC = newThick;
-          }
+          if (axes === "x") temp.thickT = newThick;
+          if (axes === "y") temp.thickC = newThick;
         }
         //层厚不能小于最小值
         Number(temp.thickS) < minThick
@@ -1190,6 +1195,7 @@ class RenderEngine {
         y1,
         x2,
         y2,
+        axes: otherPlane.name == xAxisProjPlaneName ? "x" : "y",
       });
     });
     if (screenPos.x && screenPos.y) {
@@ -1302,31 +1308,102 @@ class RenderEngine {
 
     if (flag.rectShow) {
       for (const info of allLinesInfo) {
-        const rectPos1 = {
-          x: info.midX + info.ux * rectDis,
-          y: info.midY + info.uy * rectDis,
-        };
-        const rectPos2 = {
-          x: info.midX - info.ux * rectDis,
-          y: info.midY - info.uy * rectDis,
-        };
-        // 添加两个矩形
-        rect.push({
-          c: { x: rectPos1.x, y: rectPos1.y, r: rForRect },
-          ifFill: false,
-          plane: info.plane,
-          strokeStyle: info.lineColor,
-          fillStyle: info.lineColor,
-          axisPoint: { x1: info.x1, y1: info.y1, x2: info.x2, y2: info.y2 },
-        });
-        rect.push({
-          c: { x: rectPos2.x, y: rectPos2.y, r: rForRect },
-          ifFill: false,
-          plane: info.plane,
-          strokeStyle: info.lineColor,
-          fillStyle: info.lineColor,
-          axisPoint: { x1: info.x1, y1: info.y1, x2: info.x2, y2: info.y2 },
-        });
+        // 方向向量
+        const {
+          ux,
+          uy,
+          midX,
+          midY,
+          plane,
+          lineColor,
+          x1,
+          y1,
+          x2,
+          y2,
+          thickness,
+          axes,
+        } = info;
+        // 法向量
+        const nx = -uy,
+          ny = ux;
+        // thickness：该投影线法向上的厚度（这里假设 info 里有 thickness，如果没有，可以单独传递 thicknessX/thicknessY 并通过 plane 匹配）
+
+        // 逻辑：如果 thickness > 1，绘制四个，否则两个
+        if (thickness > 1) {
+          // 四个矩形：主轴方向±rectDis，法向方向±thickness
+          rect.push({
+            c: {
+              x: midX + ux * rectDis + nx * thickness,
+              y: midY + uy * rectDis + ny * thickness,
+              r: rForRect,
+            },
+            ifFill: false,
+            plane,
+            strokeStyle: lineColor,
+            fillStyle: lineColor,
+            axisPoint: { x1, y1, x2, y2 },
+            axes,
+          });
+          rect.push({
+            c: {
+              x: midX - ux * rectDis + nx * thickness,
+              y: midY - uy * rectDis + ny * thickness,
+              r: rForRect,
+            },
+            ifFill: false,
+            plane,
+            strokeStyle: lineColor,
+            fillStyle: lineColor,
+            axisPoint: { x1, y1, x2, y2 },
+            axes,
+          });
+          rect.push({
+            c: {
+              x: midX + ux * rectDis - nx * thickness,
+              y: midY + uy * rectDis - ny * thickness,
+              r: rForRect,
+            },
+            ifFill: false,
+            plane,
+            strokeStyle: lineColor,
+            fillStyle: lineColor,
+            axisPoint: { x1, y1, x2, y2 },
+            axes,
+          });
+          rect.push({
+            c: {
+              x: midX - ux * rectDis - nx * thickness,
+              y: midY - uy * rectDis - ny * thickness,
+              r: rForRect,
+            },
+            ifFill: false,
+            plane,
+            strokeStyle: lineColor,
+            fillStyle: lineColor,
+            axisPoint: { x1, y1, x2, y2 },
+            axes,
+          });
+        } else {
+          // 只有主轴方向±rectDis
+          rect.push({
+            c: { x: midX + ux * rectDis, y: midY + uy * rectDis, r: rForRect },
+            ifFill: false,
+            plane,
+            strokeStyle: lineColor,
+            fillStyle: lineColor,
+            axisPoint: { x1, y1, x2, y2 },
+            axes,
+          });
+          rect.push({
+            c: { x: midX - ux * rectDis, y: midY - uy * rectDis, r: rForRect },
+            ifFill: false,
+            plane,
+            strokeStyle: lineColor,
+            fillStyle: lineColor,
+            axisPoint: { x1, y1, x2, y2 },
+            axes,
+          });
+        }
       }
     }
     if (thicknessX > 1) {
@@ -1406,6 +1483,7 @@ class RenderEngine {
     if (rect.length) {
       for (let i = 0; i < rect.length; i++) {
         let { x, y } = canvasPos;
+        // 判断鼠标是否在rect附近
         if (
           x &&
           y &&
@@ -1414,13 +1492,12 @@ class RenderEngine {
         ) {
           rect[i].ifFill = true;
           this.#rectChoosed = this.canvseToScreen(rect[i].c, imatrix);
-          if (i < indexFromXtoY) {
-            this.#rectChoosed.axes = "x";
-          } else {
-            this.#rectChoosed.axes = "y";
-          }
+          // 直接用axes属性，无需用下标判断
+          this.#rectChoosed.axes = rect[i].axes;
           this.#rectChoosed.imatrix = imatrix;
+          this.#rectChoosed.axisPoint = rect[i].axisPoint;
         }
+        // 如果正在加粗，全部填充
         if (this.#crossThickStart) {
           rect[i].ifFill = true;
         }
