@@ -20,8 +20,8 @@ const { mat4, vec3 } = glMatrix;
 
 const lineColors = {
   "transverse-xy": "#ff0000",
-  "coronal-xz": "#0000ff",
-  "sagittal-yz": "#00ff00",
+  "coronal-xz": "#00ff00",
+  "sagittal-yz": "#0000ff",
 };
 
 class RenderEngine {
@@ -1103,7 +1103,6 @@ class RenderEngine {
     const line = [];
     const circle = [];
     const rect = [];
-    let indexFromXtoY;
     const xAxisProjPlaneName = {
       "transverse-xy": "coronal-xz", // transverse视图时，coronal-xz是x轴投影线
       "coronal-xz": "transverse-xy", // coronal视图时，transverse-xy是x轴投影线
@@ -1305,107 +1304,7 @@ class RenderEngine {
         });
       }
     }
-
-    if (flag.rectShow) {
-      for (const info of allLinesInfo) {
-        // 方向向量
-        const {
-          ux,
-          uy,
-          midX,
-          midY,
-          plane,
-          lineColor,
-          x1,
-          y1,
-          x2,
-          y2,
-          thickness,
-          axes,
-        } = info;
-        // 法向量
-        const nx = -uy,
-          ny = ux;
-        // thickness：该投影线法向上的厚度（这里假设 info 里有 thickness，如果没有，可以单独传递 thicknessX/thicknessY 并通过 plane 匹配）
-
-        // 逻辑：如果 thickness > 1，绘制四个，否则两个
-        if (thickness > 1) {
-          // 四个矩形：主轴方向±rectDis，法向方向±thickness
-          rect.push({
-            c: {
-              x: midX + ux * rectDis + nx * thickness,
-              y: midY + uy * rectDis + ny * thickness,
-              r: rForRect,
-            },
-            ifFill: false,
-            plane,
-            strokeStyle: lineColor,
-            fillStyle: lineColor,
-            axisPoint: { x1, y1, x2, y2 },
-            axes,
-          });
-          rect.push({
-            c: {
-              x: midX - ux * rectDis + nx * thickness,
-              y: midY - uy * rectDis + ny * thickness,
-              r: rForRect,
-            },
-            ifFill: false,
-            plane,
-            strokeStyle: lineColor,
-            fillStyle: lineColor,
-            axisPoint: { x1, y1, x2, y2 },
-            axes,
-          });
-          rect.push({
-            c: {
-              x: midX + ux * rectDis - nx * thickness,
-              y: midY + uy * rectDis - ny * thickness,
-              r: rForRect,
-            },
-            ifFill: false,
-            plane,
-            strokeStyle: lineColor,
-            fillStyle: lineColor,
-            axisPoint: { x1, y1, x2, y2 },
-            axes,
-          });
-          rect.push({
-            c: {
-              x: midX - ux * rectDis - nx * thickness,
-              y: midY - uy * rectDis - ny * thickness,
-              r: rForRect,
-            },
-            ifFill: false,
-            plane,
-            strokeStyle: lineColor,
-            fillStyle: lineColor,
-            axisPoint: { x1, y1, x2, y2 },
-            axes,
-          });
-        } else {
-          // 只有主轴方向±rectDis
-          rect.push({
-            c: { x: midX + ux * rectDis, y: midY + uy * rectDis, r: rForRect },
-            ifFill: false,
-            plane,
-            strokeStyle: lineColor,
-            fillStyle: lineColor,
-            axisPoint: { x1, y1, x2, y2 },
-            axes,
-          });
-          rect.push({
-            c: { x: midX - ux * rectDis, y: midY - uy * rectDis, r: rForRect },
-            ifFill: false,
-            plane,
-            strokeStyle: lineColor,
-            fillStyle: lineColor,
-            axisPoint: { x1, y1, x2, y2 },
-            axes,
-          });
-        }
-      }
-    }
+    // x、y轴厚度虚线的绘制
     if (thicknessX > 1) {
       line
         .filter((l) => l.plane === xAxisProjPlaneName)
@@ -1437,6 +1336,41 @@ class RenderEngine {
           line.push(ele2);
         });
     }
+    if (thicknessY > 1) {
+      line
+        .filter((l) => {
+          const info = allLinesInfo.find((a) => a.plane === l.plane);
+          return info && info.axes === "y";
+        })
+        .forEach((base) => {
+          const { x1, y1, x2, y2 } = base.c;
+          const dx = x2 - x1,
+            dy = y2 - y1;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len < 1e-6) return;
+          const nx = -dy / len,
+            ny = dx / len; // 顺时针法向
+
+          // “左侧”
+          let ele1 = JSON.parse(JSON.stringify(base));
+          ele1.dottSytle = thickLine;
+          ele1.c.x1 = x1 + nx * thicknessY;
+          ele1.c.y1 = y1 + ny * thicknessY;
+          ele1.c.x2 = x2 + nx * thicknessY;
+          ele1.c.y2 = y2 + ny * thicknessY;
+          line.push(ele1);
+
+          // “右侧”
+          let ele2 = JSON.parse(JSON.stringify(base));
+          ele2.dottSytle = thickLine;
+          ele2.c.x1 = x1 - nx * thicknessY;
+          ele2.c.y1 = y1 - ny * thicknessY;
+          ele2.c.x2 = x2 - nx * thicknessY;
+          ele2.c.y2 = y2 - ny * thicknessY;
+          line.push(ele2);
+        });
+    }
+
     ctx.lineWidth = 2;
 
     for (let i = 0; i < line.length; i++) {
@@ -1480,6 +1414,132 @@ class RenderEngine {
     }
 
     this.#rectChoosed = null;
+    // 只在两条新虚线两端显示rect，中心线不显示rect
+    if (flag.rectShow) {
+      // x轴厚度虚线两端rect
+      if (thicknessX > 1) {
+        // 找到x轴投影线
+        const xLineInfo = allLinesInfo.find((info) => info.axes === "x");
+        if (xLineInfo) {
+          const { ux, uy, midX, midY, plane, lineColor, x1, y1, x2, y2, axes } =
+            xLineInfo;
+          const nx = -uy,
+            ny = ux; // 法向量
+          // “两侧”中心点
+          const center1 = {
+            x: midX + nx * thicknessX,
+            y: midY + ny * thicknessX,
+          };
+          const center2 = {
+            x: midX - nx * thicknessX,
+            y: midY - ny * thicknessX,
+          };
+          // 每个中心点两端生成rect
+          [
+            { cx: center1.x + ux * rectDis, cy: center1.y + uy * rectDis },
+            { cx: center1.x - ux * rectDis, cy: center1.y - uy * rectDis },
+            { cx: center2.x + ux * rectDis, cy: center2.y + uy * rectDis },
+            { cx: center2.x - ux * rectDis, cy: center2.y - uy * rectDis },
+          ].forEach(({ cx, cy }) => {
+            rect.push({
+              c: { x: cx, y: cy, r: rForRect },
+              ifFill: false,
+              plane,
+              strokeStyle: lineColor,
+              fillStyle: lineColor,
+              axisPoint: { x1, y1, x2, y2 },
+              axes,
+            });
+          });
+        }
+      }
+      // y轴厚度虚线两端rect
+      if (thicknessY > 1) {
+        // 找到y轴投影线
+        const yLineInfo = allLinesInfo.find((info) => info.axes === "y");
+        if (yLineInfo) {
+          const { ux, uy, midX, midY, plane, lineColor, axes } = yLineInfo;
+          const nx = -uy,
+            ny = ux; // 法向量
+          // “两侧”新线中心点
+          const center1 = {
+            x: midX + nx * thicknessY,
+            y: midY + ny * thicknessY,
+          };
+          const center2 = {
+            x: midX - nx * thicknessY,
+            y: midY - ny * thicknessY,
+          };
+
+          [
+            { base: center1, sign: +1 },
+            { base: center1, sign: -1 },
+            { base: center2, sign: +1 },
+            { base: center2, sign: -1 },
+          ].forEach(({ base, sign }) => {
+            rect.push({
+              c: {
+                x: base.x + ux * rectDis * sign,
+                y: base.y + uy * rectDis * sign,
+                r: rForRect,
+              },
+              ifFill: false,
+              plane,
+              strokeStyle: lineColor,
+              fillStyle: lineColor,
+              axisPoint: {
+                x1: base.x + ux * rectDis * sign,
+                y1: base.y + uy * rectDis * sign,
+                x2: base.x - ux * rectDis * sign,
+                y2: base.y - uy * rectDis * sign,
+              },
+              axes,
+            });
+          });
+        }
+      }
+      // 如果x或y轴厚度不大于1，中心线两端画rect
+      if (!(thicknessX > 1) || !(thicknessY > 1)) {
+        for (const info of allLinesInfo) {
+          const { ux, uy, midX, midY, plane, lineColor, x1, y1, x2, y2, axes } =
+            info;
+          // 判断只为未加粗方向画rect
+          if (
+            (axes === "x" && !(thicknessX > 1)) ||
+            (axes === "y" && !(thicknessY > 1))
+          ) {
+            rect.push({
+              c: {
+                x: midX + ux * rectDis,
+                y: midY + uy * rectDis,
+                r: rForRect,
+              },
+              ifFill: false,
+              plane,
+              strokeStyle: lineColor,
+              fillStyle: lineColor,
+              axisPoint: { x1, y1, x2, y2 },
+              axes,
+            });
+            rect.push({
+              c: {
+                x: midX - ux * rectDis,
+                y: midY - uy * rectDis,
+                r: rForRect,
+              },
+              ifFill: false,
+              plane,
+              strokeStyle: lineColor,
+              fillStyle: lineColor,
+              axisPoint: { x1, y1, x2, y2 },
+              axes,
+            });
+          }
+        }
+      }
+    }
+
+    // rect绘制与选中
     if (rect.length) {
       for (let i = 0; i < rect.length; i++) {
         let { x, y } = canvasPos;
@@ -1510,7 +1570,6 @@ class RenderEngine {
         );
       }
     }
-
     ctx.restore();
   }
 
