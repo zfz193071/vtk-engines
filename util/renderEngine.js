@@ -450,6 +450,7 @@ class RenderEngine {
           imatrix: this.#rectChoosed.imatrix,
           axisPoint: this.#rectChoosed.axisPoint,
           start: pos,
+          offset: this.#rectChoosed.offset,
         };
         this.#crossMoveStart = false;
         this.#crossRotateStart = false;
@@ -634,9 +635,10 @@ class RenderEngine {
         }
       }
       if (this.#crossThickStart) {
-        let { imatrix, axes, axisPoint, start } = this.#crossThickStart;
+        let { imatrix, axes, axisPoint, start, offset } = this.#crossThickStart; // 加入 offset
         const { x1, y1, x2, y2 } = axisPoint;
         let end = this.screenToCanvas(pos, imatrix); //去除旋转的影响
+
         // 1. 计算基准线的方向向量和法向量
         let dx = x2 - x1,
           dy = y2 - y1;
@@ -651,9 +653,16 @@ class RenderEngine {
         let vx = end.x - start.x;
         let vy = end.y - start.y;
 
-        // 3. 拖动在法向上的投影，决定厚度
+        // 3. 拖动在法向上的投影
         let proj = vx * nx + vy * ny;
-        let newThick = Math.abs(proj);
+
+        // === 关键：区分有无offset ===
+        let newThick;
+        if (typeof offset === "number") {
+          newThick = Math.abs(offset + proj);
+        } else {
+          newThick = Math.abs(proj);
+        }
 
         // 4. 单位换算
         newThick =
@@ -1421,8 +1430,7 @@ class RenderEngine {
         // 找到x轴投影线
         const xLineInfo = allLinesInfo.find((info) => info.axes === "x");
         if (xLineInfo) {
-          const { ux, uy, midX, midY, plane, lineColor, x1, y1, x2, y2, axes } =
-            xLineInfo;
+          const { ux, uy, midX, midY, plane, lineColor, axes } = xLineInfo;
           const nx = -uy,
             ny = ux; // 法向量
           // “两侧”中心点
@@ -1436,19 +1444,41 @@ class RenderEngine {
           };
           // 每个中心点两端生成rect
           [
-            { cx: center1.x + ux * rectDis, cy: center1.y + uy * rectDis },
-            { cx: center1.x - ux * rectDis, cy: center1.y - uy * rectDis },
-            { cx: center2.x + ux * rectDis, cy: center2.y + uy * rectDis },
-            { cx: center2.x - ux * rectDis, cy: center2.y - uy * rectDis },
-          ].forEach(({ cx, cy }) => {
+            {
+              cx: center1.x + ux * rectDis,
+              cy: center1.y + uy * rectDis,
+              offset: +thicknessX,
+            }, // 上侧
+            {
+              cx: center1.x - ux * rectDis,
+              cy: center1.y - uy * rectDis,
+              offset: +thicknessX,
+            },
+            {
+              cx: center2.x + ux * rectDis,
+              cy: center2.y + uy * rectDis,
+              offset: -thicknessX,
+            }, // 下侧
+            {
+              cx: center2.x - ux * rectDis,
+              cy: center2.y - uy * rectDis,
+              offset: -thicknessX,
+            },
+          ].forEach(({ cx, cy, offset }) => {
             rect.push({
               c: { x: cx, y: cy, r: rForRect },
               ifFill: false,
               plane,
               strokeStyle: lineColor,
               fillStyle: lineColor,
-              axisPoint: { x1, y1, x2, y2 },
+              axisPoint: {
+                x1: center1.x,
+                y1: center1.y,
+                x2: center2.x,
+                y2: center2.y,
+              },
               axes,
+              offset,
             });
           });
         }
@@ -1477,6 +1507,7 @@ class RenderEngine {
             { base: center2, sign: +1 },
             { base: center2, sign: -1 },
           ].forEach(({ base, sign }) => {
+            let offset = base === center1 ? +thicknessY : -thicknessY;
             rect.push({
               c: {
                 x: base.x + ux * rectDis * sign,
@@ -1494,6 +1525,7 @@ class RenderEngine {
                 y2: base.y - uy * rectDis * sign,
               },
               axes,
+              offset,
             });
           });
         }
@@ -1556,6 +1588,7 @@ class RenderEngine {
           this.#rectChoosed.axes = rect[i].axes;
           this.#rectChoosed.imatrix = imatrix;
           this.#rectChoosed.axisPoint = rect[i].axisPoint;
+          this.#rectChoosed.offset = rect[i].offset;
         }
         // 如果正在加粗，全部填充
         if (this.#crossThickStart) {
